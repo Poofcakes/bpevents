@@ -47,6 +47,8 @@ jobs:
             exit 1
           fi
           echo "Build output verified: $(ls -la ./out | head -5)"
+      - name: Add .nojekyll file
+        run: touch ./out/.nojekyll
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact
