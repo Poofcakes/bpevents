@@ -471,7 +471,7 @@ export const events: GameEvent[] = [
     type: 'Special Event',
     category: 'Event',
     seasonalCategory: 'Winter Fest',
-    description: 'Celebrate the Whimsical Winterfest.',
+    description: 'Celebrate the Whimsical Winterfest. Different areas become available on different dates and remain available until the event ends.',
     schedule: { type: 'none' },
     dateRange: {
       start: '2025-12-18',

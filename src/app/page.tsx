@@ -11,6 +11,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import AccentColorSelector from '@/components/AccentColorSelector';
 import { EventPreferencesPanel, EventPreferencesProvider } from '@/components/EventPreferences';
+import RebuildingPage from '@/components/RebuildingPage';
 import { getImagePath } from '@/lib/utils';
 import { AlarmClock, Calendar, CalendarDays, CalendarRange, Target } from 'lucide-react';
 
@@ -21,6 +22,36 @@ export default function Home() {
   const [timeMode, setTimeMode] = useState<TimeDisplayMode>('local');
   const [timeFormat, setTimeFormat] = useState<TimeFormat>('24h');
   const [mounted, setMounted] = useState(false);
+  const [isRebuilding, setIsRebuilding] = useState(false);
+
+  // Check if site is rebuilding (showing README or 404)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !mounted) return;
+
+    const checkRebuilding = () => {
+      // Wait a bit for React to hydrate
+      setTimeout(() => {
+        const bodyText = document.body.innerText || '';
+        const hasReadmeContent = bodyText.includes('README') || 
+                                 (bodyText.includes('# BP') && bodyText.includes('Installation')) ||
+                                 bodyText.includes('npm install') ||
+                                 bodyText.includes('## Getting Started');
+        
+        // Check if we have the expected React app structure
+        const hasReactApp = document.querySelector('main') || 
+                           document.querySelector('header') ||
+                           bodyText.includes('BP:SR Event Tracker') ||
+                           document.querySelector('[data-react-app="true"]');
+        
+        // If we see README content but no React app structure, we're rebuilding
+        if (hasReadmeContent && !hasReactApp) {
+          setIsRebuilding(true);
+        }
+      }, 1500); // Give React time to hydrate
+    };
+
+    checkRebuilding();
+  }, [mounted]);
 
   // Load preferences from localStorage on mount
   useEffect(() => {
@@ -50,9 +81,14 @@ export default function Home() {
     }
   }, [timeFormat, mounted]);
 
+  // Show rebuilding page if detected
+  if (isRebuilding) {
+    return <RebuildingPage />;
+  }
+
   return (
     <EventPreferencesProvider>
-      <div className="flex flex-col min-h-screen">
+      <div className="flex flex-col min-h-screen" data-react-app="true">
         <Header 
           timeMode={timeMode} 
           setTimeMode={setTimeMode} 

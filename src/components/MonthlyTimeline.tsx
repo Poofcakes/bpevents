@@ -16,9 +16,22 @@ import { format, addDays, startOfWeek } from 'date-fns';
 const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// Location mapping for Whimsical Winterfest
+const winterfestLocations: Record<string, string> = {
+  '2025-12-18': 'Pioneer Bureau',
+  '2025-12-21': 'The Spinning Rudder',
+  '2025-12-22': 'Artisan Guild',
+  '2025-12-25': 'Fashion Store',
+  '2025-12-28': 'Seaside Restaurant',
+  '2025-12-29': 'Inn',
+  '2026-01-01': 'Ocean Hill',
+  '2026-01-04': 'Alchemy Workshop',
+};
+
 // Reusable tooltip content component for monthly timeline
-const MonthlyTooltipContent = memo(({ event, originalStartDate, originalEndDate }: { event: GameEvent; originalStartDate: Date; originalEndDate: Date | null }) => {
+const MonthlyTooltipContent = memo(({ event, originalStartDate, originalEndDate, range }: { event: GameEvent; originalStartDate: Date; originalEndDate: Date | null; range?: { start: string; end?: string } }) => {
     const dateFormat = 'MMM d, yyyy';
+    const isWhimsicalWinterfest = event.name === 'Whimsical Winterfest';
     
     return (
         <div className="rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-lg max-w-xs">
@@ -30,7 +43,19 @@ const MonthlyTooltipContent = memo(({ event, originalStartDate, originalEndDate 
                     <p>Became available on {format(originalStartDate, dateFormat)}</p>
                 )}
             </div>
-            <p className="text-xs italic text-muted-foreground max-w-xs">{event.description}</p>
+            {isWhimsicalWinterfest && (
+                <div className="text-xs text-muted-foreground/80 mt-2 border-t pt-2 space-y-1">
+                    <p className="font-semibold">Location Availability:</p>
+                    {Object.entries(winterfestLocations)
+                        .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+                        .map(([date, location]) => (
+                            <p key={date}>
+                                {format(new Date(date + 'T00:00:00Z'), dateFormat)}: {location}
+                            </p>
+                        ))}
+                </div>
+            )}
+            <p className="text-xs italic text-muted-foreground max-w-xs mt-2">{event.description}</p>
         </div>
     );
 });
@@ -232,7 +257,7 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth }: { event: Gam
             </div>
             {mounted && isHovered && mousePos && typeof window !== 'undefined' && createPortal(
                 <div ref={tooltipRef} style={tooltipStyle}>
-                    <MonthlyTooltipContent event={event} originalStartDate={originalStartDate} originalEndDate={originalEndDate} />
+                    <MonthlyTooltipContent event={event} originalStartDate={originalStartDate} originalEndDate={originalEndDate} range={range} />
                 </div>,
                 document.body
             )}
