@@ -46,6 +46,16 @@
     color: hsl(var(--accent));
   }
   
+  @keyframes snow-fall {
+    to {
+      transform: translateY(100vh) rotate(360deg);
+    }
+  }
+
+  .snowflake-animation {
+    animation: snow-fall linear infinite;
+  }
+
   @keyframes bounce-gentle {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-5px); }

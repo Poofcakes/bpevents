@@ -14,6 +14,7 @@ import { EventPreferencesPanel, EventPreferencesProvider } from '@/components/Ev
 import RebuildingPage from '@/components/RebuildingPage';
 import { getImagePath } from '@/lib/utils';
 import { AlarmClock, Calendar, CalendarDays, CalendarRange, Target } from 'lucide-react';
+import SnowEffect from '@/components/SnowEffect';
 
 export type TimeDisplayMode = 'game' | 'local';
 export type TimeFormat = '12h' | '24h';
@@ -24,30 +25,50 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [isRebuilding, setIsRebuilding] = useState(false);
 
-  // Check if site is rebuilding (showing README or 404)
+  // Check if site is rebuilding (showing README instead of the app)
   useEffect(() => {
     if (typeof window === 'undefined' || !mounted) return;
 
     const checkRebuilding = () => {
-      // Wait a bit for React to hydrate
+      // Check immediately for React app marker
+      const hasReactApp = document.querySelector('[data-react-app="true"]');
+      
+      // If we have the React app marker, we're good
+      if (hasReactApp) {
+        setIsRebuilding(false);
+        return;
+      }
+
+      // Wait a bit for React to hydrate, then check again
       setTimeout(() => {
+        // Check for React app structure (more specific markers)
+        const reactAppMarker = document.querySelector('[data-react-app="true"]');
+        const mainElement = document.querySelector('main');
+        const headerElement = document.querySelector('header');
+        
+        // Check for README-specific content (more specific checks)
         const bodyText = document.body.innerText || '';
-        const hasReadmeContent = bodyText.includes('README') || 
-                                 (bodyText.includes('# BP') && bodyText.includes('Installation')) ||
-                                 bodyText.includes('npm install') ||
-                                 bodyText.includes('## Getting Started');
+        const hasReadmeMarkers = (
+          bodyText.includes('npm install') && 
+          bodyText.includes('npm run dev') &&
+          bodyText.includes('Getting Started') &&
+          bodyText.includes('Prerequisites')
+        ) || (
+          bodyText.includes('README') && 
+          !bodyText.includes('BP:SR Event Tracker | Blue Protocol: Star Resonance') // Our footer text
+        );
         
-        // Check if we have the expected React app structure
-        const hasReactApp = document.querySelector('main') || 
-                           document.querySelector('header') ||
-                           bodyText.includes('BP:SR Event Tracker') ||
-                           document.querySelector('[data-react-app="true"]');
+        // If we have React app structure, we're good
+        if (reactAppMarker || (mainElement && headerElement)) {
+          setIsRebuilding(false);
+          return;
+        }
         
-        // If we see README content but no React app structure, we're rebuilding
-        if (hasReadmeContent && !hasReactApp) {
+        // If we detect README markers and no React app, we're rebuilding
+        if (hasReadmeMarkers && !reactAppMarker && !mainElement) {
           setIsRebuilding(true);
         }
-      }, 1500); // Give React time to hydrate
+      }, 500); // Reduced timeout - React should hydrate quickly
     };
 
     checkRebuilding();
@@ -81,9 +102,14 @@ export default function Home() {
     }
   }, [timeFormat, mounted]);
 
-  // Show rebuilding page if detected
-  if (isRebuilding) {
+  // Show rebuilding page if detected (but only after mounted to prevent hydration issues)
+  if (mounted && isRebuilding) {
     return <RebuildingPage />;
+  }
+  
+  // While checking, show nothing (prevent flash of content)
+  if (!mounted) {
+    return null;
   }
 
   return (
@@ -261,9 +287,26 @@ export default function Home() {
       <footer className="text-center py-4 text-muted-foreground text-sm border-t space-y-2">
         <p>BP:SR Event Tracker | Blue Protocol: Star Resonance</p>
         <p>Last Updated: 22.12.2025</p>
+        <div className="flex items-center justify-center gap-4 pt-2">
+          <a
+            href="https://ko-fi.com/poofcakes"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#13C3FF] hover:bg-[#0FA8D6] text-white rounded-md transition-colors font-semibold text-sm"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            Support on Ko-fi
+          </a>
+        </div>
         <AccentColorSelector />
       </footer>
         <EventPreferencesPanel />
+        <SnowEffect />
         <div className="fixed bottom-0 left-0 z-30 pointer-events-none">
           <Image
             src={getImagePath("/images/airona_peek.webp")}

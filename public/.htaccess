@@ -13,10 +13,21 @@ RewriteRule ^images/(.*)$ /images/$1 [L]
 RewriteCond %{REQUEST_FILENAME} -f
 RewriteRule ^ - [L]
 
+# Ensure index.html is served for root and missing files
+DirectoryIndex index.html
+
 # Handle client-side routing - redirect all requests to index.html
+# But exclude README.md and other markdown files from being served
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !^/README\.md$ [NC]
+RewriteCond %{REQUEST_URI} !\.md$ [NC]
 RewriteRule ^ /index.html [L]
+
+# Explicitly prevent README.md from being served at root
+RewriteCond %{REQUEST_URI} ^/$ [NC]
+RewriteCond %{QUERY_STRING} ^$ [NC]
+RewriteRule ^$ /index.html [L,R=301]
 
 # Set proper MIME types for JavaScript and CSS
 <IfModule mod_mime.c>
