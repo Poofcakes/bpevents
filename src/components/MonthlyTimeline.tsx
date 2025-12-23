@@ -9,9 +9,11 @@ import { useEventPreferences, filterEventsByPreferences } from './EventPreferenc
 import { getGameTime, toLocalTime, DAILY_RESET_HOUR_UTC, GAME_TIMEZONE_OFFSET } from '@/lib/time';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Star, Crown, Swords, Ghost, Gamepad2, Users, Footprints, Gift, UtensilsCrossed, HeartHandshake, ShieldCheck, KeySquare, CalendarHeart, BrainCircuit, ShieldAlert } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, Crown, Swords, Ghost, Gamepad2, Users, Footprints, Gift, UtensilsCrossed, HeartHandshake, ShieldCheck, KeySquare, CalendarHeart, BrainCircuit, ShieldAlert, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, addDays, startOfWeek } from 'date-fns';
+import { Checkbox } from './ui/checkbox';
+import { useMonthlyCompletions } from '@/hooks/useMonthlyCompletions';
 
 const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -104,7 +106,7 @@ const CategoryColors: Record<GameEvent['category'], {bg: string, border: string,
 };
 
 
-const MonthlyEventBar = ({ event, range, monthStart, daysInMonth }: { event: GameEvent; range: { start: string; end?: string }; monthStart: Date; daysInMonth: number }) => {
+const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, onToggleCompletion }: { event: GameEvent; range: { start: string; end?: string }; monthStart: Date; daysInMonth: number; isCompleted: boolean; onToggleCompletion: () => void }) => {
 
     const parseDate = (dateString: string) => {
         // Assumes 'YYYY-MM-DD' and interprets it as UTC midnight
@@ -120,12 +122,18 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth }: { event: Gam
     const viewMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1));
     const viewMonthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0, 23, 59, 59));
 
+    const originalEndDate = range.end ? parseDate(range.end) : null;
+
     // Clamp event dates to the current month view
     const viewStart = eventStart < viewMonthStart ? viewMonthStart : eventStart;
     const viewEnd = eventEnd > viewMonthEnd ? viewMonthEnd : eventEnd;
 
     // If the event is not in this month, don't render it
     if (viewEnd < viewMonthStart || viewStart > viewMonthEnd) return null;
+
+    // Check if event spans across months
+    const startedInPreviousMonth = eventStart < viewMonthStart;
+    const continuesToNextMonth = (originalEndDate && originalEndDate > viewMonthEnd) || !range.end;
 
     let startDay = viewStart.getUTCDate();
     
@@ -153,10 +161,8 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth }: { event: Gam
     const eventTypeMatch = event.description.match(/^(\w+\s*Event)/);
     const eventType = eventTypeMatch ? `(${eventTypeMatch[1]})` : '';
 
-
     const dateFormat = 'MMM d, yyyy';
     const originalStartDate = parseDate(range.start);
-    const originalEndDate = range.end ? parseDate(range.end) : null;
     
     const [mounted, setMounted] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
@@ -238,7 +244,16 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth }: { event: Gam
     return (
         <>
             <div
-                className={cn("absolute rounded-lg px-2 py-1 flex items-center gap-2 text-xs font-bold z-10 h-8 cursor-default", colorClasses.bg, colorClasses.border)}
+                className={cn(
+                    "absolute px-2 py-1 flex items-center gap-2 text-xs font-bold z-10 h-8 cursor-default border",
+                    colorClasses.bg,
+                    colorClasses.border,
+                    startedInPreviousMonth ? "rounded-r-lg" : "rounded-l-lg",
+                    continuesToNextMonth && !startedInPreviousMonth ? "rounded-r-none rounded-l-lg" : "",
+                    startedInPreviousMonth && !continuesToNextMonth ? "rounded-l-none rounded-r-lg" : "",
+                    startedInPreviousMonth && continuesToNextMonth ? "rounded-none" : "",
+                    !startedInPreviousMonth && !continuesToNextMonth ? "rounded-lg" : ""
+                )}
                 style={{
                     left: `${leftPercent}%`,
                     width: `max(calc(${widthPercent}% - 2px), 24px)`,
@@ -252,8 +267,24 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth }: { event: Gam
                     setMousePos(null);
                 }}
             >
+                {startedInPreviousMonth && (
+                    <ChevronLeft className="h-3 w-3 flex-shrink-0 opacity-60" />
+                )}
+                <Checkbox
+                    checked={isCompleted}
+                    onCheckedChange={(checked) => {
+                        if (checked !== 'indeterminate') {
+                            onToggleCompletion();
+                        }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-3 w-3 flex-shrink-0 mr-1"
+                />
                 <Icon className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">{event.name}</span>
+                <span className={cn("truncate", isCompleted && "opacity-30 grayscale")}>{event.name}</span>
+                {continuesToNextMonth && (
+                    <ChevronRight className="h-3 w-3 flex-shrink-0 opacity-60 ml-auto" />
+                )}
             </div>
             {mounted && isHovered && mousePos && typeof window !== 'undefined' && createPortal(
                 <div ref={tooltipRef} style={tooltipStyle}>
@@ -267,6 +298,7 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth }: { event: Gam
 
 export default function MonthlyTimeline() {
     const { isCategoryEnabled } = useEventPreferences();
+    const { isEventCompleted: isMonthlyEventCompleted, toggleEventCompletion: toggleMonthlyEventCompletion, resetMonth, mounted: monthlyCompletionsMounted } = useMonthlyCompletions();
     const [now, setNow] = useState<Date | null>(null);
 
     const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
@@ -441,9 +473,22 @@ export default function MonthlyTimeline() {
                     <h3 className="text-lg font-semibold text-center">
                         {format(monthStart, 'MMMM yyyy')} (Game Time)
                     </h3>
-                    <Button variant="outline" size="icon" onClick={() => changeMonth(1)}>
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        {monthlyCompletionsMounted && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => resetMonth(monthStart)}
+                                className="h-7 px-2 gap-1.5"
+                            >
+                                <RotateCcw className="h-3 w-3" />
+                                <span className="text-xs">Reset</span>
+                            </Button>
+                        )}
+                        <Button variant="outline" size="icon" onClick={() => changeMonth(1)}>
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </div>
 
                 <div ref={timelineContainerRef} className="w-full overflow-x-auto pb-4 relative">
@@ -482,21 +527,45 @@ export default function MonthlyTimeline() {
                              {dungeonUnlockEvents.length > 0 && (
                                <div className="relative h-9">
                                   {dungeonUnlockEvents.map((event, index) => (
-                                      <MonthlyEventBar key={`dungeon-${event.name}-${index}`} event={event} range={event.dateRange!} monthStart={monthStart} daysInMonth={daysInMonth} />
+                                      <MonthlyEventBar 
+                                          key={`dungeon-${event.name}-${index}`} 
+                                          event={event} 
+                                          range={event.dateRange!} 
+                                          monthStart={monthStart} 
+                                          daysInMonth={daysInMonth}
+                                          isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, event.dateRange!)}
+                                          onToggleCompletion={() => toggleMonthlyEventCompletion(event.name, event.dateRange!)}
+                                      />
                                   ))}
                                </div>
                              )}
                              {raidUnlockEvents.length > 0 && (
                               <div className="relative h-9">
                                   {raidUnlockEvents.map((event, index) => (
-                                      <MonthlyEventBar key={`raid-${event.name}-${index}`} event={event} range={event.dateRange!} monthStart={monthStart} daysInMonth={daysInMonth} />
+                                      <MonthlyEventBar 
+                                          key={`raid-${event.name}-${index}`} 
+                                          event={event} 
+                                          range={event.dateRange!} 
+                                          monthStart={monthStart} 
+                                          daysInMonth={daysInMonth}
+                                          isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, event.dateRange!)}
+                                          onToggleCompletion={() => toggleMonthlyEventCompletion(event.name, event.dateRange!)}
+                                      />
                                   ))}
                                </div>
                              )}
                              {roguelikeEvents.length > 0 && (
                               <div className="relative h-9">
                                   {roguelikeEvents.map((event, index) => (
-                                      <MonthlyEventBar key={`roguelike-${event.name}-${index}`} event={event} range={event.dateRange!} monthStart={monthStart} daysInMonth={daysInMonth} />
+                                      <MonthlyEventBar 
+                                          key={`roguelike-${event.name}-${index}`} 
+                                          event={event} 
+                                          range={event.dateRange!} 
+                                          monthStart={monthStart} 
+                                          daysInMonth={daysInMonth}
+                                          isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, event.dateRange!)}
+                                          onToggleCompletion={() => toggleMonthlyEventCompletion(event.name, event.dateRange!)}
+                                      />
                                   ))}
                                </div>
                              )}
@@ -510,16 +579,21 @@ export default function MonthlyTimeline() {
                                             event={event} 
                                             range={range}
                                             monthStart={monthStart} 
-                                            daysInMonth={daysInMonth} 
+                                            daysInMonth={daysInMonth}
+                                            isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, range)}
+                                            onToggleCompletion={() => toggleMonthlyEventCompletion(event.name, range)}
                                           />
                                         ))}
                                       </Fragment>
                                     ) : event.dateRange ? (
                                       <MonthlyEventBar 
+                                        key={`${event.name}-${index}`}
                                         event={event} 
                                         range={event.dateRange}
                                         monthStart={monthStart} 
-                                        daysInMonth={daysInMonth} 
+                                        daysInMonth={daysInMonth}
+                                        isCompleted={monthlyCompletionsMounted && event.dateRange && isMonthlyEventCompleted(event.name, event.dateRange)}
+                                        onToggleCompletion={() => event.dateRange && toggleMonthlyEventCompletion(event.name, event.dateRange)}
                                       />
                                     ) : null}
                                 </div>

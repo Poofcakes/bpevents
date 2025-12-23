@@ -8,13 +8,15 @@ import { events, GameEvent } from '@/lib/events';
 import { useEventPreferences, filterEventsByPreferences } from './EventPreferences';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { Star, Swords, Zap, Crown, Gamepad2, Footprints, Users, Gift, UtensilsCrossed, HeartHandshake, ShieldCheck, Clock, KeySquare, Trophy, ChevronLeft, ChevronRight, BrainCircuit, ShieldAlert } from 'lucide-react';
+import { Star, Swords, Zap, Crown, Gamepad2, Footprints, Users, Gift, UtensilsCrossed, HeartHandshake, ShieldCheck, Clock, KeySquare, Trophy, ChevronLeft, ChevronRight, BrainCircuit, ShieldAlert, RotateCcw, Ghost, CalendarHeart } from 'lucide-react';
 import { getGameTime, getWeekPeriod, getGameDate } from '@/lib/time';
 import { format, getWeek, isSameDay, startOfDay, differenceInCalendarWeeks, addDays } from 'date-fns';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
+import { Checkbox } from './ui/checkbox';
+import { useWeeklyCompletions } from '@/hooks/useWeeklyCompletions';
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const GAME_LAUNCH_DATE = new Date('2025-10-09T05:00:00Z'); // Game launches at reset time on Thursday Oct 9th.
@@ -91,6 +93,13 @@ const CategoryColors: Record<GameEvent['category'], string> = {
     'Roguelike': 'border-yellow-400 bg-yellow-400/20 text-yellow-500',
 };
 
+const SeasonalCategoryIcons: Record<NonNullable<GameEvent['seasonalCategory']>, React.ElementType> = {
+    'Kanamia Harvest Festival': UtensilsCrossed,
+    'Halloween': Ghost,
+    'Winter Fest': Gift,
+    'Silverstar Carnival': CalendarHeart,
+};
+
 
 const isDailyEvent = (event: GameEvent) => {
     const { schedule } = event;
@@ -103,7 +112,7 @@ const isDailyEvent = (event: GameEvent) => {
     return false;
 }
 
-const WeeklyEvent = ({ event }: { event: GameEvent }) => {
+const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek }: { event: GameEvent, isCompleted: boolean, onToggleCompletion: () => void, isCurrentWeek: boolean }) => {
     const [mounted, setMounted] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
@@ -214,7 +223,8 @@ const WeeklyEvent = ({ event }: { event: GameEvent }) => {
             <div 
                 className={cn(
                     "rounded-md px-2 py-1 flex items-center gap-2 text-xs font-semibold cursor-default h-7", 
-                    colorClass
+                    colorClass,
+                    isCompleted && "opacity-30 grayscale"
                 )}
                 onMouseEnter={(e) => {
                     setIsHovered(true);
@@ -225,12 +235,32 @@ const WeeklyEvent = ({ event }: { event: GameEvent }) => {
                     setMousePos(null);
                 }}
             >
-                <Icon className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate flex-1">{event.name}</span>
-                {(event.dateRange || event.dateRanges) && (
-                    <Clock className="h-3 w-3 text-muted-foreground" />
+                {isCurrentWeek && (
+                    <Checkbox
+                        checked={isCompleted}
+                        onCheckedChange={(checked) => {
+                            if (checked !== 'indeterminate') {
+                                onToggleCompletion();
+                            }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-3 w-3 flex-shrink-0"
+                    />
                 )}
-            </div>
+                        <div className="flex items-center gap-1">
+                            {event.seasonalCategory && (() => {
+                            const SeasonalIcon = SeasonalCategoryIcons[event.seasonalCategory];
+                            return SeasonalIcon ? (
+                                <SeasonalIcon className={cn("h-2.5 w-2.5 flex-shrink-0 opacity-70", isCompleted && "opacity-30 grayscale")} />
+                            ) : null;
+                        })()}
+                        <Icon className={cn("h-4 w-4 flex-shrink-0", isCompleted && "opacity-30 grayscale")} />
+                    </div>
+                    <span className="truncate flex-1">{event.name}</span>
+                    {(event.dateRange || event.dateRanges) && (
+                                <Clock className="h-3 w-3 text-muted-foreground" />
+                        )}
+                    </div>
             {mounted && isHovered && mousePos && typeof window !== 'undefined' && createPortal(
                 <div ref={tooltipRef} style={tooltipStyle}>
                     <WeeklyTooltipContent event={event} timeSummary={timeSummary} />
@@ -241,7 +271,7 @@ const WeeklyEvent = ({ event }: { event: GameEvent }) => {
     );
 };
 
-const WeeklyEventBar = ({ event, daySpans }: { event: GameEvent; daySpans: number[] }) => {
+const WeeklyEventBar = ({ event, daySpans, isCompleted, onToggleCompletion, isCurrentWeek }: { event: GameEvent; daySpans: number[]; isCompleted: boolean; onToggleCompletion: () => void; isCurrentWeek: boolean }) => {
     const [mounted, setMounted] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
@@ -355,9 +385,9 @@ const WeeklyEventBar = ({ event, daySpans }: { event: GameEvent; daySpans: numbe
 
     return (
         <div className="px-px" style={{ paddingTop: '2px', paddingBottom: '2px'}}>
-            <div
-                className={cn("rounded-md px-2 py-1 flex items-center gap-2 text-xs font-semibold cursor-default h-7 relative", colorClass)}
-                style={{ left, width }}
+                    <div
+                className={cn("rounded-md px-2 py-1 flex items-center gap-2 text-xs font-semibold cursor-default h-7 relative", colorClass, isCompleted && "opacity-30 grayscale")}
+                        style={{ left, width }}
                 onMouseEnter={(e) => {
                     setIsHovered(true);
                     setMousePos({ x: e.clientX, y: e.clientY });
@@ -367,12 +397,32 @@ const WeeklyEventBar = ({ event, daySpans }: { event: GameEvent; daySpans: numbe
                     setMousePos(null);
                 }}
             >
-                <Icon className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate flex-1">{event.name}</span>
-                {(event.dateRange || event.dateRanges) && (
-                    <Clock className="h-3 w-3 text-muted-foreground" />
+                {isCurrentWeek && (
+                    <Checkbox
+                        checked={isCompleted}
+                        onCheckedChange={(checked) => {
+                            if (checked !== 'indeterminate') {
+                                onToggleCompletion();
+                            }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-3 w-3 flex-shrink-0"
+                    />
                 )}
-            </div>
+                        <div className="flex items-center gap-1">
+                            {event.seasonalCategory && (() => {
+                                const SeasonalIcon = SeasonalCategoryIcons[event.seasonalCategory];
+                                return SeasonalIcon ? (
+                                    <SeasonalIcon className={cn("h-2.5 w-2.5 flex-shrink-0 opacity-70", isCompleted && "opacity-30 grayscale")} />
+                                ) : null;
+                            })()}
+                            <Icon className={cn("h-4 w-4 flex-shrink-0", isCompleted && "opacity-30 grayscale")} />
+                        </div>
+                        <span className="truncate flex-1">{event.name}</span>
+                        {(event.dateRange || event.dateRanges) && (
+                                    <Clock className="h-3 w-3 text-muted-foreground" />
+                        )}
+                    </div>
             {mounted && isHovered && mousePos && typeof window !== 'undefined' && createPortal(
                 <div ref={tooltipRef} style={tooltipStyle}>
                     <WeeklyTooltipContent event={event} timeSummary={timeSummary} />
@@ -386,6 +436,7 @@ const WeeklyEventBar = ({ event, daySpans }: { event: GameEvent; daySpans: numbe
 
 export default function WeeklyTimeline() {
     const { isCategoryEnabled } = useEventPreferences();
+    const { isEventCompleted, toggleEventCompletion, resetWeek, mounted: weeklyCompletionsMounted } = useWeeklyCompletions();
     const [currentDate, setCurrentDate] = useState(() => new Date());
     const [hideDaily, setHideDaily] = useState(false);
     const [hidePermanent, setHidePermanent] = useState(false);
@@ -633,7 +684,7 @@ export default function WeeklyTimeline() {
 
         return { daySpecificEventsByDay: sortDayCategories(daySpecificByDay), multiDayEvents: sortedMultiDayEvents };
 
-    }, [weekDates, biWeeklyPeriod, hidePermanent, gameWeekNumber]);
+    }, [weekDates, biWeeklyPeriod, hidePermanent, gameWeekNumber, isCategoryEnabled]);
 
     const filteredMultiDayEvents = useMemo(() => {
         const sorted = multiDayEvents;
@@ -664,9 +715,18 @@ export default function WeeklyTimeline() {
                  ) : (
                     Object.entries(dayCategories).map(([category, categoryEvents]) => (
                     <div key={category} className="space-y-1">
-                        {categoryEvents.map(event => (
-                            <WeeklyEvent key={event.name} event={event} />
-                        ))}
+                        {categoryEvents.map(event => {
+                            const shouldShowCheckbox = (event.category === 'World Boss Crusade' || event.name === 'Guild Dance');
+                            return (
+                                <WeeklyEvent 
+                                    key={event.name} 
+                                    event={event}
+                                    isCompleted={shouldShowCheckbox && weeklyCompletionsMounted && isEventCompleted(event.name, weekDates[dayIndex])}
+                                    onToggleCompletion={() => toggleEventCompletion(event.name, weekDates[dayIndex])}
+                                    isCurrentWeek={shouldShowCheckbox}
+                                />
+                            );
+                        })}
                     </div>
                 )))}
             </div>
@@ -676,12 +736,11 @@ export default function WeeklyTimeline() {
     return (
             <Card className="w-full">
                 <CardHeader>
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                        <div className="flex justify-between w-full md:w-auto">
+                    <div className="flex justify-between items-center">
                             <Button variant="outline" size="icon" onClick={() => changeWeek(-1)} disabled={gameWeekNumber <= 1}>
                                 <ChevronLeft className="h-4 w-4" />
                             </Button>
-                            <div className="text-center flex-1 md:px-4">
+                        <div className="text-center">
                                 <CardTitle className="text-lg">
                                     {gameWeekNumber > 0 ? `Game Week ${gameWeekNumber}` : 'Pre-Launch'}
                                 </CardTitle>
@@ -692,9 +751,39 @@ export default function WeeklyTimeline() {
                                     (Calendar Week {calendarWeekNumber})
                                 </p>
                             </div>
+                        <div className="flex items-center gap-2">
+                            {weeklyCompletionsMounted && (() => {
+                                // Collect all World Boss Crusade and Guild Dance event names in the current week
+                                const weeklyEventNames: string[] = [];
+                                daySpecificEventsByDay.forEach(day => {
+                                    Object.values(day).flat().forEach(event => {
+                                        if ((event.category === 'World Boss Crusade' || event.name === 'Guild Dance') && !weeklyEventNames.includes(event.name)) {
+                                            weeklyEventNames.push(event.name);
+                                        }
+                                    });
+                                });
+                                filteredMultiDayEvents.forEach(({ event }) => {
+                                    if ((event.category === 'World Boss Crusade' || event.name === 'Guild Dance') && !weeklyEventNames.includes(event.name)) {
+                                        weeklyEventNames.push(event.name);
+                                    }
+                                });
+                                
+                                return (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => resetWeek(weekDates[0], weeklyEventNames)}
+                                        className="h-7 px-2 gap-1.5"
+                                    >
+                                        <RotateCcw className="h-3 w-3" />
+                                        <span className="text-xs">Reset</span>
+                                    </Button>
+                                );
+                            })()}
                             <Button variant="outline" size="icon" onClick={() => changeWeek(1)}>
                                 <ChevronRight className="h-4 w-4" />
                             </Button>
+                        </div>
                         </div>
                         <div className="flex flex-col sm:flex-row items-center gap-x-4 gap-y-2 justify-end">
                             <div className="flex items-center space-x-2">
@@ -704,7 +793,6 @@ export default function WeeklyTimeline() {
                             <div className="flex items-center space-x-2">
                                 <Switch id="hide-permanent" checked={hidePermanent} onCheckedChange={setHidePermanent} />
                                 <Label htmlFor="hide-permanent">Show only time-limited events</Label>
-                            </div>
                         </div>
                     </div>
                 </CardHeader>
@@ -739,7 +827,14 @@ export default function WeeklyTimeline() {
                                 </div>
                                 <div className="space-y-1 p-1">
                                     {filteredMultiDayEvents.map(({ event, daySpans }, index) => (
-                                        <WeeklyEventBar key={`${event.name}-${daySpans[0]}-${index}`} event={event} daySpans={daySpans} />
+                                        <WeeklyEventBar 
+                                            key={`${event.name}-${daySpans[0]}-${index}`} 
+                                            event={event} 
+                                            daySpans={daySpans}
+                                            isCompleted={(event.category === 'World Boss Crusade' || event.name === 'Guild Dance') && weeklyCompletionsMounted && isEventCompleted(event.name, weekDates[daySpans[0]])}
+                                            onToggleCompletion={() => toggleEventCompletion(event.name, weekDates[daySpans[0]])}
+                                            isCurrentWeek={(event.category === 'World Boss Crusade' || event.name === 'Guild Dance')}
+                                        />
                                     ))}
                                 </div>
                             </div>
@@ -749,7 +844,7 @@ export default function WeeklyTimeline() {
 
                      {!isCurrentWeek && (
                         <Button onClick={() => setCurrentDate(getGameTime(new Date()))} className="w-full mt-4">
-                            Jump to This Week
+                            Jump to Current Week
                         </Button>
                     )}
                     

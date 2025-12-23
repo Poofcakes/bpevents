@@ -130,8 +130,8 @@ export default function Home() {
             Monster Hunter Times
           </h2>
           <div className="flex flex-col lg:flex-row gap-4">
-            <div className="lg:w-80 flex-shrink-0">
-              <div className="bg-card border rounded-lg p-4 space-y-3">
+            <div className="lg:w-96 flex-shrink-0">
+              <div className="bg-card border rounded-lg p-6 space-y-4">
                 <div className="space-y-2">
                   <h3 className="font-semibold text-foreground">Field Bosses</h3>
                   <p className="text-sm text-muted-foreground">
@@ -178,10 +178,89 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* Other Resources */}
+        <div className="mt-16 pt-8 border-t">
+          <h2 className="text-2xl font-bold mb-4">Other Resources</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <a 
+              href="https://teawase.github.io/blue-protocol-checklist/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="p-4 border rounded-lg hover:bg-accent/10 transition-colors"
+            >
+              <h3 className="font-semibold mb-1">Blue Protocol Checklist</h3>
+              <p className="text-sm text-muted-foreground">Daily and weekly task tracker by Teawase</p>
+            </a>
+            <a 
+              href="https://starresonance.th.gl/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="p-4 border rounded-lg hover:bg-accent/10 transition-colors"
+            >
+              <h3 className="font-semibold mb-1">Star Resonance Interactive Maps</h3>
+              <p className="text-sm text-muted-foreground">Interactive maps and location guides by TH.GL</p>
+            </a>
+            <a 
+              href="https://bp-db.de/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="p-4 border rounded-lg hover:bg-accent/10 transition-colors"
+            >
+              <h3 className="font-semibold mb-1">Blue Protocol Database</h3>
+              <p className="text-sm text-muted-foreground">Player rankings and statistics</p>
+            </a>
+            <a 
+              href="https://blueprotocol.fr/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="p-4 border rounded-lg hover:bg-accent/10 transition-colors"
+            >
+              <h3 className="font-semibold mb-1">Blue Protocol Leaderboard</h3>
+              <p className="text-sm text-muted-foreground">Dungeon and raid leaderboards</p>
+            </a>
+            <a 
+              href="https://bpsrtalent.vercel.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="p-4 border rounded-lg hover:bg-accent/10 transition-colors"
+            >
+              <h3 className="font-semibold mb-1">BPSR Talent Builder</h3>
+              <p className="text-sm text-muted-foreground">Build and share talent builds</p>
+            </a>
+            <a 
+              href="https://maxroll.gg/blue-protocol" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="p-4 border rounded-lg hover:bg-accent/10 transition-colors"
+            >
+              <h3 className="font-semibold mb-1">Maxroll Guides</h3>
+              <p className="text-sm text-muted-foreground">Comprehensive game guides and builds</p>
+            </a>
+            <a 
+              href="https://www.prydwen.gg/blue-protocol/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="p-4 border rounded-lg hover:bg-accent/10 transition-colors"
+            >
+              <h3 className="font-semibold mb-1">Prydwen</h3>
+              <p className="text-sm text-muted-foreground">Game database and guides</p>
+            </a>
+            <a 
+              href="https://bpsr.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="p-4 border rounded-lg hover:bg-accent/10 transition-colors"
+            >
+              <h3 className="font-semibold mb-1">BPSR.app</h3>
+              <p className="text-sm text-muted-foreground">DPS meter and leaderboards</p>
+            </a>
+          </div>
+        </div>
       </main>
       <footer className="text-center py-4 text-muted-foreground text-sm border-t space-y-2">
         <p>BP:SR Event Tracker | Blue Protocol: Star Resonance</p>
-        <p>Last Updated: 20.12.2025</p>
+        <p>Last Updated: 22.12.2025</p>
         <AccentColorSelector />
       </footer>
         <EventPreferencesPanel />

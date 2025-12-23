@@ -8,11 +8,13 @@ import { events, GameEvent } from '@/lib/events';
 import { getGameTime, toLocalTime, formatDuration, getGameDate, DAILY_RESET_HOUR_UTC, getWeekPeriod } from '@/lib/time';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Star, Swords, Crown, Gamepad2, Users, Footprints, ShieldAlert, HeartHandshake, ShieldCheck, KeySquare, BrainCircuit } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, Swords, Crown, Gamepad2, Users, Footprints, ShieldAlert, HeartHandshake, ShieldCheck, KeySquare, BrainCircuit, RotateCcw, PiggyBank, UtensilsCrossed, Gift, CalendarHeart, Ghost } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TimeDisplayMode, TimeFormat } from '@/app/page';
 import { format } from 'date-fns';
 import { useEventPreferences, filterEventsByPreferences } from './EventPreferences';
+import { useDailyCompletions } from '@/hooks/useDailyCompletions';
+import { Checkbox } from './ui/checkbox';
 
 const checkDateInRange = (event: GameEvent, date: Date) => {
     // Check availability for permanent events
@@ -184,7 +186,12 @@ const CategoryColors: Record<GameEvent['category'], string> = {
     'Roguelike': 'border-yellow-400 bg-yellow-400/20 text-yellow-500',
 };
 
-
+const SeasonalCategoryIcons: Record<NonNullable<GameEvent['seasonalCategory']>, React.ElementType> = {
+    'Kanamia Harvest Festival': UtensilsCrossed,
+    'Halloween': Ghost,
+    'Winter Fest': Gift,
+    'Silverstar Carnival': CalendarHeart,
+};
 
 
 // Memoized tooltip content to avoid rerenders - but includes live time info
@@ -311,7 +318,7 @@ const EventTooltipContent = memo(({ event, occurrence, timeMode, timeFormat, isT
 });
 EventTooltipContent.displayName = 'EventTooltipContent';
 
-const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, gameDayStart }: { event: GameEvent, occurrence: {start: Date, end?: Date}, timeMode: TimeDisplayMode, timeFormat: TimeFormat, isToday: boolean, gameDayStart: Date }) => {
+const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, gameDayStart, isCompleted, onToggleCompletion }: { event: GameEvent, occurrence: {start: Date, end?: Date}, timeMode: TimeDisplayMode, timeFormat: TimeFormat, isToday: boolean, gameDayStart: Date, isCompleted: boolean, onToggleCompletion: () => void }) => {
     const [mounted, setMounted] = useState(false);
     
     useEffect(() => {
@@ -338,7 +345,11 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
         width = minutesToPixels(event.durationMinutes);
     }
 
-    const Icon = CategoryIcons[event.category] || Star;
+    let Icon = CategoryIcons[event.category] || Star;
+    // Use piggy-bank icon for boarlets
+    if (event.name === 'Lovely Boarlet' || event.name === 'Breezy Boarlet') {
+        Icon = PiggyBank;
+    }
     const timeZone = timeMode === 'game' ? 'UTC' : undefined;
 
     const effectiveEndDate = useMemo(() => {
@@ -392,16 +403,6 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
         hour: '2-digit',
         minute: '2-digit',
         hour12: timeFormat === '12h'
-    };
-
-    // Ensure minimum width for events to show icon and text properly
-    const minWidthForDisplay = minutesToPixels(15); // 15 minutes minimum
-    const displayWidth = Math.max(width, minWidthForDisplay);
-    
-    const barStyle = {
-        left: `${left}px`, 
-        width: `${displayWidth}px`,
-        minWidth: `${minWidthForDisplay}px`,
     };
 
     const dateFormat = 'MMM d, yyyy';
@@ -490,11 +491,12 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
     }, [mousePos, isHovered, tooltipDimensions]);
 
     if (width === 0) {
+        const BoarletIcon = (event.name === 'Lovely Boarlet' || event.name === 'Breezy Boarlet') ? PiggyBank : (CategoryIcons[event.category] || Star);
         return (
             <>
-                <div
+            <div
                     className="absolute flex flex-col items-center -top-4 h-10 cursor-default"
-                    style={{ left: `${left}px`, transform: 'translateX(-50%)' }}
+                style={{ left: `${left}px`, transform: 'translateX(-50%)' }}
                     onMouseEnter={(e) => {
                         setIsHovered(true);
                         setMousePos({ x: e.clientX, y: e.clientY });
@@ -503,12 +505,23 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
                         setIsHovered(false);
                         setMousePos(null);
                     }}
-                >
-                    <div className={cn("text-xs font-bold whitespace-nowrap px-2 py-0.5 rounded-full border", colorClass, isPast ? 'opacity-50' : '')}>
-                      {event.name}
+            >
+                <div className="flex items-center gap-2">
+                    <div className={cn("text-xs font-bold whitespace-nowrap px-2 py-0.5 rounded-full border", colorClass, isPast ? 'opacity-50' : '', isCompleted && 'opacity-30 grayscale')}>
+                  {event.name}
                     </div>
-                    <div className={cn("w-0.5 grow", isPast ? "bg-muted" : lineColor)} />
+                    <div className="flex items-center gap-0.5">
+                        {event.seasonalCategory && (() => {
+                            const SeasonalIcon = SeasonalCategoryIcons[event.seasonalCategory];
+                            return SeasonalIcon ? (
+                                <SeasonalIcon className={cn("h-2.5 w-2.5 flex-shrink-0 opacity-70", isCompleted && 'opacity-30 grayscale')} />
+                            ) : null;
+                        })()}
+                        <BoarletIcon className={cn("h-3 w-3 flex-shrink-0", isCompleted && 'opacity-30 grayscale')} />
+                    </div>
                 </div>
+                <div className={cn("w-0.5 grow", isPast ? "bg-muted" : lineColor)} />
+            </div>
                 {mounted && isHovered && mousePos && typeof window !== 'undefined' && createPortal(
                     <div ref={tooltipRef} style={tooltipStyle}>
                         <EventTooltipContent event={event} occurrence={occurrence} timeMode={timeMode} timeFormat={timeFormat} isToday={isToday} effectiveEndDate={effectiveEndDate} />
@@ -521,27 +534,52 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
     
     return (
         <>
-            <div
-                    className={cn(
-                        "absolute rounded-md px-2 py-0.5 flex items-center gap-1.5 text-xs font-semibold z-10 h-6 border transition-all duration-200 cursor-default", 
-                        colorClass,
-                        isPast && "opacity-50 bg-card/50",
+        <div 
+            className="absolute z-10"
+            style={{ left: `${left}px` }}
+            onMouseEnter={(e) => {
+                setIsHovered(true);
+                setMousePos({ x: e.clientX, y: e.clientY });
+            }}
+            onMouseLeave={() => {
+                setIsHovered(false);
+                setMousePos(null);
+            }}
+        >
+            <div className="flex items-center gap-2">
+        <div
+            className={cn(
+                        "rounded-md px-2 py-0.5 flex items-center gap-1.5 text-xs font-semibold h-6 border transition-all duration-200 cursor-default", 
+                colorClass,
+                isPast && "opacity-50 bg-card/50",
                         isActive && "ring-2 ring-white shadow-lg shadow-white/20",
-                        width < minWidthForDisplay && "overflow-visible"
+                        isCompleted && "opacity-30 grayscale"
                     )}
-                style={barStyle}
-                onMouseEnter={(e) => {
-                    setIsHovered(true);
-                    setMousePos({ x: e.clientX, y: e.clientY });
-                }}
-                onMouseLeave={() => {
-                    setIsHovered(false);
-                    setMousePos(null);
-                }}
-            >
-                <Icon className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">{event.name}</span>
+                    style={{ width: `${Math.max(width, 0)}px` }}
+                >
+                    <Checkbox
+                        checked={isCompleted}
+                        onCheckedChange={(checked) => {
+                            if (checked !== 'indeterminate') {
+                                onToggleCompletion();
+                            }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-3 w-3 flex-shrink-0"
+                    />
+                    <span className="truncate whitespace-nowrap">{event.name}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                    {event.seasonalCategory && (() => {
+                        const SeasonalIcon = SeasonalCategoryIcons[event.seasonalCategory];
+                        return SeasonalIcon ? (
+                            <SeasonalIcon className={cn("h-2.5 w-2.5 flex-shrink-0 opacity-70", isCompleted && "opacity-30 grayscale")} />
+                        ) : null;
+                    })()}
+                    <Icon className={cn("h-3 w-3 flex-shrink-0", isCompleted && "opacity-30 grayscale")} />
+                </div>
             </div>
+        </div>
             {mounted && isHovered && mousePos && typeof window !== 'undefined' && createPortal(
                 <div ref={tooltipRef} style={tooltipStyle}>
                     <EventTooltipContent event={event} occurrence={occurrence} timeMode={timeMode} timeFormat={timeFormat} isToday={isToday} effectiveEndDate={effectiveEndDate} />
@@ -556,6 +594,7 @@ TimelineEvent.displayName = 'TimelineEvent';
 
 export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: TimeDisplayMode, timeFormat: TimeFormat }) {
     const { isCategoryEnabled } = useEventPreferences();
+    const { isEventCompleted, toggleEventCompletion, resetDay, mounted: completionsMounted } = useDailyCompletions();
     const [selectedGameDate, setSelectedGameDate] = useState(() => getGameDate(new Date()));
     const timelineContainerRef = useRef<HTMLDivElement>(null);
     const hasScrolledRef = useRef(false);
@@ -631,7 +670,7 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
             });
         
         return { boarletEvents: boarlets, otherEvents: others };
-    }, [selectedGameDate, isCategoryEnabled]);
+    }, [selectedGameDate, isCategoryEnabled, isToday, isEventCompleted, completionsMounted]);
 
     const changeDay = (amount: number) => {
         hasScrolledRef.current = false; // Allow scrolling on day change
@@ -713,17 +752,28 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
 
     return (
             <Card className="p-3 space-y-3 w-full">
-                 <div className="flex justify-between items-center">
+                 <div className="flex justify-between items-center gap-2">
                     <Button variant="outline" size="icon" onClick={() => changeDay(-1)}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <h3 className="text-lg font-semibold text-center">
+                    <h3 className="text-lg font-semibold text-center flex-1">
                         Game Day: {displayDate.toLocaleDateString(timeMode === 'game' ? 'en-CA' : undefined, { 
                             weekday: 'long',
                             timeZone: timeMode === 'game' ? 'UTC' : undefined,
                             year: 'numeric', month: 'long', day: 'numeric' 
                         })} ({timeMode === 'game' ? 'Game Time' : 'Your Time'})
                     </h3>
+                    {completionsMounted && (
+                        <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => resetDay(selectedGameDate)}
+                            className="flex items-center gap-1.5"
+                        >
+                            <RotateCcw className="h-3 w-3" />
+                            <span className="text-xs">Reset</span>
+                        </Button>
+                    )}
                     <Button variant="outline" size="icon" onClick={() => changeDay(1)}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
@@ -762,7 +812,34 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                                     {boarletEvents.map(({ event, occurrences }) => (
                                         <Fragment key={event.name}>
                                             {occurrences.map((occurrence) => (
-                                                <TimelineEvent key={event.name + occurrence.start.toISOString()} event={event} occurrence={occurrence} timeMode={timeMode} timeFormat={timeFormat} isToday={isToday} gameDayStart={gameDayStart} />
+                                                <TimelineEvent 
+                                                    key={event.name + occurrence.start.toISOString()} 
+                                                    event={event} 
+                                                    occurrence={occurrence} 
+                                                    timeMode={timeMode} 
+                                                    timeFormat={timeFormat} 
+                                                    isToday={isToday} 
+                                                    gameDayStart={gameDayStart}
+                                                    isCompleted={completionsMounted && (() => {
+                                                        // For non-buff events, check if ANY occurrence is completed for the day
+                                                        // For buff events, check the specific occurrence
+                                                        if (event.category === 'Buff') {
+                                                            const occurrenceKey = `${occurrence.start.getUTCHours()}-${occurrence.start.getUTCMinutes()}`;
+                                                            return isEventCompleted(event.name, selectedGameDate, occurrenceKey);
+                                                        } else {
+                                                            // For non-buff events, just check the event name (no occurrenceKey)
+                                                            return isEventCompleted(event.name, selectedGameDate);
+                                                        }
+                                                    })()}
+                                                    onToggleCompletion={() => {
+                                                        // For non-buff events, mark all occurrences as complete (no occurrenceKey)
+                                                        // For buff events, mark only this specific occurrence
+                                                        const occurrenceKey = event.category === 'Buff' 
+                                                            ? `${occurrence.start.getUTCHours()}-${occurrence.start.getUTCMinutes()}`
+                                                            : undefined;
+                                                        toggleEventCompletion(event.name, selectedGameDate, occurrenceKey);
+                                                    }}
+                                                />
                                             ))}
                                         </Fragment>
                                     ))}
@@ -774,7 +851,34 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                                 <div key={event.name} className="relative h-10" style={{ zIndex: 10 + i}}>
                                     <div className="absolute top-1/2 -translate-y-1/2 w-full h-0.5 bg-muted/20 rounded-full" />
                                     {occurrences.map((occurrence) => (
-                                        <TimelineEvent key={event.name + occurrence.start.toISOString()} event={event} occurrence={occurrence} timeMode={timeMode} timeFormat={timeFormat} isToday={isToday} gameDayStart={gameDayStart} />
+                                        <TimelineEvent 
+                                            key={event.name + occurrence.start.toISOString()} 
+                                            event={event} 
+                                            occurrence={occurrence} 
+                                            timeMode={timeMode} 
+                                            timeFormat={timeFormat} 
+                                            isToday={isToday} 
+                                            gameDayStart={gameDayStart}
+                                            isCompleted={completionsMounted && (() => {
+                                                // For non-buff events, check if ANY occurrence is completed for the day
+                                                // For buff events, check the specific occurrence
+                                                if (event.category === 'Buff') {
+                                                    const occurrenceKey = `${occurrence.start.getUTCHours()}-${occurrence.start.getUTCMinutes()}`;
+                                                    return isEventCompleted(event.name, selectedGameDate, occurrenceKey);
+                                                } else {
+                                                    // For non-buff events, just check the event name (no occurrenceKey)
+                                                    return isEventCompleted(event.name, selectedGameDate);
+                                                }
+                                            })()}
+                                            onToggleCompletion={() => {
+                                                // For non-buff events, mark all occurrences as complete (no occurrenceKey)
+                                                // For buff events, mark only this specific occurrence
+                                                const occurrenceKey = event.category === 'Buff' 
+                                                    ? `${occurrence.start.getUTCHours()}-${occurrence.start.getUTCMinutes()}`
+                                                    : undefined;
+                                                toggleEventCompletion(event.name, selectedGameDate, occurrenceKey);
+                                            }}
+                                        />
                                     ))}
                                 </div>
                             ))}
