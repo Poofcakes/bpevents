@@ -402,9 +402,9 @@ export const events: GameEvent[] = [
     schedule: {
       type: 'daily-intervals',
       intervals: [
-        { start: { hour: 5, minute: 0 }, end: { hour: 7, minute: 0 } }, // 03-05 UTC-2
-        { start: { hour: 13, minute: 0 }, end: { hour: 15, minute: 0 } }, // 11-13 UTC-2
-        { start: { hour: 21, minute: 0 }, end: { hour: 23, minute: 0 } }, // 19-21 UTC-2
+        { start: { hour: 3, minute: 0 }, end: { hour: 5, minute: 0 } }, // 03-05 UTC-2
+        { start: { hour: 11, minute: 0 }, end: { hour: 13, minute: 0 } }, // 11-13 UTC-2
+        { start: { hour: 19, minute: 0 }, end: { hour: 21, minute: 0 } }, // 19-21 UTC-2
       ]
     },
     durationMinutes: 120, // 2 hours per interval
