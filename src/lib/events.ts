@@ -410,8 +410,7 @@ export const events: GameEvent[] = [
     durationMinutes: 120, // 2 hours per interval
     dateRanges: [
       { start: '2025-12-24', end: '2025-12-27' },
-      { start: '2025-12-31', end: '2025-12-31' },
-      { start: '2026-01-01', end: '2026-01-03' }
+      { start: '2025-12-31', end: '2026-01-03' }
     ]
   },
   {
@@ -425,17 +424,17 @@ export const events: GameEvent[] = [
       days: [0, 1, 2, 3, 4, 5, 6], // All days (filtered by dateRanges)
       times: [
         // Dec 31, 2025 times (game time UTC-2)
-        { hour: 10, minute: 0 }, // 12:00 local
-        { hour: 12, minute: 0 }, // 14:00 local
-        { hour: 19, minute: 0 }, // 21:00 local
-        { hour: 21, minute: 0 }, // 23:00 local
-        { hour: 22, minute: 0 }, // 00:00 local (Jan 1)
-        { hour: 23, minute: 0 }, // 01:00 local (Jan 1)
+        { hour: 9, minute: 0 }, // 12:00 local
+        { hour: 11, minute: 0 }, // 14:00 local
+        { hour: 18, minute: 0 }, // 21:00 local
+        { hour: 20, minute: 0 }, // 23:00 local
+        { hour: 21, minute: 0 }, // 00:00 local (Jan 1)
+        { hour: 22, minute: 0 }, // 01:00 local (Jan 1)
         // Jan 1, 2026 times (game time UTC-2)
-        { hour: 2, minute: 0 },  // 04:00 local
-        { hour: 4, minute: 0 },  // 06:00 local
-        { hour: 5, minute: 0 },  // 07:00 local
-        { hour: 7, minute: 0 },  // 09:00 local
+        { hour: 1, minute: 0 },  // 04:00 local
+        { hour: 3, minute: 0 },  // 06:00 local
+        { hour: 4, minute: 0 },  // 07:00 local
+        { hour: 6, minute: 0 },  // 09:00 local
       ]
     },
     durationMinutes: 8,

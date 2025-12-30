@@ -17,6 +17,8 @@ import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
 import { useWeeklyCompletions } from '@/hooks/useWeeklyCompletions';
+import { TimeDisplayMode } from '@/app/page';
+import { toLocalTime } from '@/lib/time';
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const GAME_LAUNCH_DATE = new Date('2025-10-09T05:00:00Z'); // Game launches at reset time on Thursday Oct 9th.
@@ -225,9 +227,9 @@ const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek }: 
             <div 
                 className={cn(
                     "rounded-md px-2 py-1 flex items-center gap-2 text-xs font-semibold cursor-default h-7", 
-                    colorClass,
-                    isCompleted && "opacity-30 grayscale"
+                    colorClass
                 )}
+                style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined}
                 onMouseEnter={(e) => {
                     setIsHovered(true);
                     setMousePos({ x: e.clientX, y: e.clientY });
@@ -253,10 +255,10 @@ const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek }: 
                             {event.seasonalCategory && (() => {
                             const SeasonalIcon = SeasonalCategoryIcons[event.seasonalCategory];
                             return SeasonalIcon ? (
-                                <SeasonalIcon className={cn("h-2.5 w-2.5 flex-shrink-0 opacity-70", isCompleted && "opacity-30 grayscale")} />
+                                <SeasonalIcon className="h-2.5 w-2.5 flex-shrink-0 opacity-70" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
                             ) : null;
                         })()}
-                        <Icon className={cn("h-4 w-4 flex-shrink-0", isCompleted && "opacity-30 grayscale")} />
+                        <Icon className="h-4 w-4 flex-shrink-0" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
                     </div>
                     <span className="truncate flex-1">{event.name}</span>
                     {(event.dateRange || event.dateRanges) && (
@@ -388,8 +390,8 @@ const WeeklyEventBar = ({ event, daySpans, isCompleted, onToggleCompletion, isCu
     return (
         <div className="px-px" style={{ paddingTop: '2px', paddingBottom: '2px'}}>
                     <div
-                className={cn("rounded-md px-2 py-1 flex items-center gap-2 text-xs font-semibold cursor-default h-7 relative", colorClass, isCompleted && "opacity-30 grayscale")}
-                        style={{ left, width }}
+                className={cn("rounded-md px-2 py-1 flex items-center gap-2 text-xs font-semibold cursor-default h-7 relative", colorClass)}
+                        style={{ left, width, ...(isCompleted && { filter: 'saturate(0.3)', opacity: 0.75 }) }}
                 onMouseEnter={(e) => {
                     setIsHovered(true);
                     setMousePos({ x: e.clientX, y: e.clientY });
@@ -415,10 +417,10 @@ const WeeklyEventBar = ({ event, daySpans, isCompleted, onToggleCompletion, isCu
                             {event.seasonalCategory && (() => {
                                 const SeasonalIcon = SeasonalCategoryIcons[event.seasonalCategory];
                                 return SeasonalIcon ? (
-                                    <SeasonalIcon className={cn("h-2.5 w-2.5 flex-shrink-0 opacity-70", isCompleted && "opacity-30 grayscale")} />
+                                    <SeasonalIcon className="h-2.5 w-2.5 flex-shrink-0 opacity-70" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
                                 ) : null;
                             })()}
-                            <Icon className={cn("h-4 w-4 flex-shrink-0", isCompleted && "opacity-30 grayscale")} />
+                            <Icon className="h-4 w-4 flex-shrink-0" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
                         </div>
                         <span className="truncate flex-1">{event.name}</span>
                         {(event.dateRange || event.dateRanges) && (
@@ -436,7 +438,7 @@ const WeeklyEventBar = ({ event, daySpans, isCompleted, onToggleCompletion, isCu
 };
 
 
-export default function WeeklyTimeline() {
+export default function WeeklyTimeline({ timeMode = 'game' }: { timeMode?: TimeDisplayMode }) {
     const { isCategoryEnabled } = useEventPreferences();
     const { isEventCompleted, toggleEventCompletion, resetWeek, mounted: weeklyCompletionsMounted } = useWeeklyCompletions();
     const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -479,8 +481,22 @@ export default function WeeklyTimeline() {
         
         const calWeekNum = getWeek(gameNow, { weekStartsOn: 1 });
 
-        const now = getGameTime(new Date());
-        const currentDayIndex = dates.findIndex(d => isSameDay(d, getGameDate(now)));
+        // Calculate today index based on selected timezone
+        const now = new Date();
+        let currentDayIndex = -1;
+        if (timeMode === 'local') {
+            // For local time, compare dates directly in local timezone
+            const localNow = now;
+            const localDate = new Date(localNow.getFullYear(), localNow.getMonth(), localNow.getDate());
+            currentDayIndex = dates.findIndex(d => {
+                const weekDate = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+                return localDate.getTime() === weekDate.getTime();
+            });
+        } else {
+            // For game time, use game date
+            const gameNowDate = getGameDate(now);
+            currentDayIndex = dates.findIndex(d => isSameDay(d, gameNowDate));
+        }
 
         const _isCurrentWeek = currentDayIndex !== -1;
         
@@ -490,7 +506,7 @@ export default function WeeklyTimeline() {
         const gameWeekNum = differenceInCalendarWeeks(startOfWeek, GAME_LAUNCH_WEEK_START, { weekStartsOn: 1 }) + 1;
 
         return { weekDates: dates, weekRangeFormatted: formatted, gameWeekNumber: gameWeekNum, calendarWeekNumber: calWeekNum, todayIndex: currentDayIndex, isCurrentWeek: _isCurrentWeek, biWeeklyPeriod: period };
-    }, [currentDate]);
+    }, [currentDate, timeMode]);
     
     const { daySpecificEventsByDay, multiDayEvents } = useMemo(() => {
         const daySpecificByDay: Record<string, GameEvent[]>[] = Array.from({ length: 7 }, () => ({}));
@@ -519,20 +535,42 @@ export default function WeeklyTimeline() {
             // Note: dateRange uses calendar dates, so we compare calendar dates
             const checkSingleRange = (range: { start: string; end: string }) => {
                 const startDate = new Date(range.start + 'T00:00:00Z');
-                startDate.setUTCHours(0, 0, 0, 0);
+                // Default to 5 AM game time (7 AM UTC) if event has no specific schedule
+                if (event.schedule.type === 'none') {
+                    startDate.setUTCHours(7, 0, 0, 0); // 5 AM game time = 7 AM UTC
+                } else {
+                    startDate.setUTCHours(0, 0, 0, 0);
+                }
                 if (date < startDate) return false;
                 const endDate = new Date(range.end + 'T00:00:00Z');
-                endDate.setUTCHours(23, 59, 59, 999);
-                return date <= endDate;
+                // Events without specific times end at 5 AM game time (7 AM UTC) on the day after the end date
+                if (event.schedule.type === 'none') {
+                    endDate.setUTCDate(endDate.getUTCDate() + 1);
+                    endDate.setUTCHours(7, 0, 0, 0); // 5 AM game time = 7 AM UTC on the next day
+                } else {
+                    endDate.setUTCHours(23, 59, 59, 999);
+                }
+                return date < endDate; // Use < instead of <= since end is exclusive at 5 AM
             };
 
             if (event.dateRanges) {
                 return event.dateRanges.some(range => {
                     const startDate = new Date(range.start + 'T00:00:00Z');
-                    startDate.setUTCHours(0, 0, 0, 0);
+                    // Default to 5 AM game time (7 AM UTC) if event has no specific schedule
+                    if (event.schedule.type === 'none') {
+                        startDate.setUTCHours(7, 0, 0, 0); // 5 AM game time = 7 AM UTC
+                    } else {
+                        startDate.setUTCHours(0, 0, 0, 0);
+                    }
                     const endDate = new Date(range.end + 'T00:00:00Z');
-                    endDate.setUTCHours(23, 59, 59, 999);
-                    return date >= startDate && date <= endDate;
+                    // Events without specific times end at 5 AM game time (7 AM UTC) on the day after the end date
+                    if (event.schedule.type === 'none') {
+                        endDate.setUTCDate(endDate.getUTCDate() + 1);
+                        endDate.setUTCHours(7, 0, 0, 0); // 5 AM game time = 7 AM UTC on the next day
+                    } else {
+                        endDate.setUTCHours(23, 59, 59, 999);
+                    }
+                    return date >= startDate && date < endDate; // Use < for end since it's exclusive at 5 AM
                 });
             }
             if (event.dateRange) {
@@ -553,7 +591,21 @@ export default function WeeklyTimeline() {
             
             const isInWeek = (range: {start?: string, end?: string}) => {
                 const eventStart = new Date(range.start + 'T00:00:00Z');
-                const eventEnd = range.end ? addDays(new Date(range.end + 'T00:00:00Z'), 1) : null;
+                // Default to 5 AM game time (7 AM UTC) if event has no specific schedule
+                if (event.schedule.type === 'none') {
+                    eventStart.setUTCHours(7, 0, 0, 0); // 5 AM game time = 7 AM UTC
+                }
+                const eventEnd = range.end ? (() => {
+                    const end = new Date(range.end + 'T00:00:00Z');
+                    // Events without specific times end at 5 AM game time (7 AM UTC) on the day after the end date
+                    if (event.schedule.type === 'none') {
+                        end.setUTCDate(end.getUTCDate() + 1);
+                        end.setUTCHours(7, 0, 0, 0); // 5 AM game time = 7 AM UTC on the next day
+                    } else {
+                        end.setUTCDate(end.getUTCDate() + 1);
+                    }
+                    return end;
+                })() : null;
                 if (eventEnd) {
                     return eventStart < weekEnd && eventEnd > weekStart;
                 }

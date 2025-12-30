@@ -141,14 +141,14 @@ export default function Home() {
             <CalendarDays className="h-7 w-7" />
             This Week's Schedule
           </h2>
-          <WeeklyTimeline />
+          <WeeklyTimeline timeMode={timeMode} />
         </div>
         <div>
           <h2 className="text-3xl font-bold mb-6 font-headline gradient-text drop-shadow-lg flex items-center gap-2">
             <CalendarRange className="h-7 w-7" />
             Monthly Events
           </h2>
-          <MonthlyTimeline />
+          <MonthlyTimeline timeMode={timeMode} timeFormat={timeFormat} />
         </div>
         <div className="space-y-4">
            <h2 className="text-3xl font-bold font-headline gradient-text drop-shadow-lg flex items-center gap-2">
@@ -286,15 +286,15 @@ export default function Home() {
       </main>
       <footer className="text-center py-4 text-muted-foreground text-sm border-t space-y-2">
         <p>BP:SR Event Tracker | Blue Protocol: Star Resonance</p>
-        <p>Last Updated: 29.12.2025</p>
+        <p>Last Updated: 30.12.2025</p>
         <div className="flex items-center justify-center gap-4 pt-2">
           <a
             href="https://ko-fi.com/poofcakes"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-[#13C3FF] hover:bg-[#0FA8D6] text-white rounded-md transition-colors font-semibold text-sm"
+            className="inline-flex items-center gap-1.5 px-2 py-1 bg-accent hover:bg-accent/80 text-accent-foreground rounded-md transition-colors font-medium text-xs"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
               <circle cx="9" cy="7" r="4"></circle>
               <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>

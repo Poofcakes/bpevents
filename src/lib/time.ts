@@ -3,7 +3,7 @@
 export const GAME_TIMEZONE_OFFSET = -2;
 export const DAILY_RESET_HOUR_UTC = 5; // 5 AM Game Time (UTC-2) is 7 AM UTC
 const WEEKLY_RESET_DAY_UTC = 1; // Monday
-const BIWEEKLY_REFERENCE_RESET = new Date('2024-07-29T07:00:00Z'); 
+export const BIWEEKLY_REFERENCE_RESET = new Date('2024-07-29T07:00:00Z'); 
 import { getWeek } from 'date-fns';
 
 

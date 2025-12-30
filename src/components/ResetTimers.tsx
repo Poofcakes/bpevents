@@ -42,7 +42,7 @@ const ResetCountdown = ({ title, nextResetFn, formatFn, icon, showCheckbox, isCo
     const timeDifference = nextReset.getTime() - now.getTime();
 
     return (
-        <Card className={isCompleted ? "opacity-30 grayscale" : ""}>
+        <Card style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-base font-medium flex items-center gap-2">
                     {icon}

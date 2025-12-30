@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useMemo, useRef, useEffect, Fragment, memo } from 'react';
+import { useState, useMemo, useRef, useEffect, Fragment, memo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { events, GameEvent } from '@/lib/events';
 import { useEventPreferences, filterEventsByPreferences } from './EventPreferences';
@@ -14,9 +14,81 @@ import { cn } from '@/lib/utils';
 import { format, addDays, startOfWeek } from 'date-fns';
 import { Checkbox } from './ui/checkbox';
 import { useMonthlyCompletions } from '@/hooks/useMonthlyCompletions';
+import { TimeDisplayMode, TimeFormat } from '@/app/page';
 
 const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Helper to get exact start time for an event on a date (game time UTC)
+const getEventStartTime = (event: GameEvent, dateString: string): Date => {
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    
+    if (event.schedule.type === 'none') {
+        // Events without specific times start at 5 AM game time (7 AM UTC)
+        date.setUTCHours(7, 0, 0, 0);
+        return date;
+    }
+    
+    // For events with schedules, use the first occurrence time of the day
+    // Default to 5 AM (7 AM UTC) if we can't determine
+    if (event.schedule.type === 'daily-intervals' || event.schedule.type === 'daily-intervals-specific') {
+        const intervals = event.schedule.intervals;
+        if (intervals && intervals.length > 0) {
+            date.setUTCHours(intervals[0].start.hour, intervals[0].start.minute, 0, 0);
+            return date;
+        }
+    }
+    if (event.schedule.type === 'daily-specific') {
+        const times = event.schedule.times;
+        if (times && times.length > 0) {
+            date.setUTCHours(times[0].hour, times[0].minute, 0, 0);
+            return date;
+        }
+    }
+    
+    // Default to 5 AM game time (7 AM UTC)
+    date.setUTCHours(7, 0, 0, 0);
+    return date;
+};
+
+// Helper to get exact end time for an event on a date (game time UTC)
+const getEventEndTime = (event: GameEvent, dateString: string): Date => {
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    
+    if (event.schedule.type === 'none') {
+        // Events without specific times end at 5 AM game time (7 AM UTC) on the end date itself
+        date.setUTCHours(7, 0, 0, 0);
+        return date;
+    }
+    
+    // For events with schedules, use the last occurrence end time of the day
+    // Schedule hours are stored as UTC hours directly (matching DailyTimeline behavior)
+    if (event.schedule.type === 'daily-intervals' || event.schedule.type === 'daily-intervals-specific') {
+        const intervals = event.schedule.intervals;
+        if (intervals && intervals.length > 0) {
+            const lastInterval = intervals[intervals.length - 1];
+            date.setUTCHours(lastInterval.end.hour, lastInterval.end.minute, 0, 0);
+            // Only roll over to next day if end hour is before start hour (crosses midnight)
+            // For normal intervals like 18:00-23:00, both are on the same date
+            return date;
+        }
+    }
+    if (event.schedule.type === 'daily-specific') {
+        const times = event.schedule.times;
+        if (times && times.length > 0 && event.durationMinutes) {
+            const lastTime = times[times.length - 1];
+            date.setUTCHours(lastTime.hour, lastTime.minute, 0, 0);
+            date.setUTCMinutes(date.getUTCMinutes() + event.durationMinutes);
+            return date;
+        }
+    }
+    
+    // Default to 5 AM game time (7 AM UTC) on the end date itself
+    date.setUTCHours(7, 0, 0, 0);
+    return date;
+};
 
 // Location mapping for Whimsical Winterfest
 const winterfestLocations: Record<string, string> = {
@@ -30,19 +102,83 @@ const winterfestLocations: Record<string, string> = {
   '2026-01-04': 'Alchemy Workshop',
 };
 
+// Helper function to check if an event ends at 5 AM or earlier (game time) - before the daily reset
+const eventEndsAt5AM = (event: GameEvent): boolean => {
+    // Events with only date ranges (no specific time schedule) end at 5 AM
+    if (event.schedule.type === 'none' && (event.dateRange || event.dateRanges)) {
+        return true;
+    }
+    // Events with intervals ending at 5 AM or earlier
+    if (event.schedule.type === 'daily-intervals' || event.schedule.type === 'daily-intervals-specific') {
+        return event.schedule.intervals.some(interval => interval.end.hour <= 5 && interval.end.minute === 0);
+    }
+    return false;
+};
+
 // Reusable tooltip content component for monthly timeline
-const MonthlyTooltipContent = memo(({ event, originalStartDate, originalEndDate, range }: { event: GameEvent; originalStartDate: Date; originalEndDate: Date | null; range?: { start: string; end?: string } }) => {
+const MonthlyTooltipContent = memo(({ event, exactStartTime, exactEndTime, timeMode, timeFormat }: { event: GameEvent; exactStartTime: Date; exactEndTime: Date | null; timeMode: TimeDisplayMode; timeFormat: TimeFormat }) => {
     const dateFormat = 'MMM d, yyyy';
+    const timeFormatStr = timeFormat === '12h' ? 'hh:mm a' : 'HH:mm';
     const isWhimsicalWinterfest = event.name === 'Whimsical Winterfest';
+    
+    // Validate dates before formatting
+    const isValidStart = exactStartTime && !isNaN(exactStartTime.getTime());
+    const isValidEnd = exactEndTime && !isNaN(exactEndTime.getTime());
+    
+    // Convert to local time if needed, or format as UTC for game time
+    let displayStartTime: Date | null = null;
+    let displayEndTime: Date | null = null;
+    
+    if (isValidStart) {
+        if (timeMode === 'local') {
+            displayStartTime = toLocalTime(exactStartTime);
+        } else {
+            // For game time, use UTC directly
+            displayStartTime = exactStartTime;
+        }
+    }
+    
+    if (isValidEnd) {
+        if (timeMode === 'local') {
+            displayEndTime = toLocalTime(exactEndTime!);
+        } else {
+            // For game time, use UTC directly
+            displayEndTime = exactEndTime!;
+        }
+    }
+    
+    // Format dates and times
+    // For game time (UTC), format with UTC timezone
+    // For local time, format normally (date-fns uses local timezone by default)
+    const startDateStr = displayStartTime 
+        ? (timeMode === 'game'
+            ? displayStartTime.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' })
+            : format(displayStartTime, dateFormat))
+        : 'Invalid date';
+    const startTimeStr = displayStartTime 
+        ? (timeMode === 'game' 
+            ? displayStartTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour12: timeFormat === '12h', hour: '2-digit', minute: '2-digit' })
+            : format(displayStartTime, timeFormatStr))
+        : '--:--';
+    const endDateStr = displayEndTime 
+        ? (timeMode === 'game'
+            ? displayEndTime.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' })
+            : format(displayEndTime, dateFormat))
+        : null;
+    const endTimeStr = displayEndTime 
+        ? (timeMode === 'game'
+            ? displayEndTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour12: timeFormat === '12h', hour: '2-digit', minute: '2-digit' })
+            : format(displayEndTime, timeFormatStr))
+        : null;
     
     return (
         <div className="rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-lg max-w-xs">
             <p className="font-bold">{event.name}</p>
             <div className="text-xs text-muted-foreground/80 mt-2 border-t pt-2">
-                {originalEndDate ? (
-                    <p>Runs from {format(originalStartDate, dateFormat)} until {format(originalEndDate, dateFormat)}</p>
+                {exactEndTime && isValidEnd ? (
+                    <p>Runs from {startDateStr} {startTimeStr} until {endDateStr} {endTimeStr}</p>
                 ) : (
-                    <p>Became available on {format(originalStartDate, dateFormat)}</p>
+                    <p>Became available on {startDateStr} {startTimeStr}</p>
                 )}
             </div>
             {isWhimsicalWinterfest && (
@@ -108,44 +244,66 @@ const CategoryColors: Record<GameEvent['category'], {bg: string, border: string,
 };
 
 
-const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, onToggleCompletion }: { event: GameEvent; range: { start: string; end?: string }; monthStart: Date; daysInMonth: number; isCompleted: boolean; onToggleCompletion: () => void }) => {
+const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, onToggleCompletion, currentTime, timeMode, timeFormat }: { event: GameEvent; range: { start: string; end?: string }; monthStart: Date; daysInMonth: number; isCompleted: boolean; onToggleCompletion: () => void; currentTime: Date; timeMode: TimeDisplayMode; timeFormat: TimeFormat }) => {
 
-    const parseDate = (dateString: string) => {
-        // Assumes 'YYYY-MM-DD' and interprets it as UTC midnight
-        const [year, month, day] = dateString.split('-').map(Number);
-        return new Date(Date.UTC(year, month - 1, day));
-    };
+    // Calculate exact start and end times based on event schedule (in UTC/game time)
+    const exactStartTimeUTC = getEventStartTime(event, range.start);
+    const exactEndTimeUTC = range.end ? getEventEndTime(event, range.end) : null;
 
-    const eventStart = parseDate(range.start);
-    const eventEnd = range.end
-        ? parseDate(range.end)
-        : new Date(eventStart);
+    // Validate dates - if invalid, don't render
+    if (!exactStartTimeUTC || isNaN(exactStartTimeUTC.getTime())) {
+        return null;
+    }
+    if (exactEndTimeUTC && isNaN(exactEndTimeUTC.getTime())) {
+        return null;
+    }
 
-    const viewMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1));
-    const viewMonthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0, 23, 59, 59));
+    // Convert to display time (local or game time) based on timeMode
+    const exactStartTime = timeMode === 'local' ? toLocalTime(exactStartTimeUTC) : exactStartTimeUTC;
+    const exactEndTime = exactEndTimeUTC ? (timeMode === 'local' ? toLocalTime(exactEndTimeUTC) : exactEndTimeUTC) : null;
 
-    const originalEndDate = range.end ? parseDate(range.end) : null;
+    // Calculate month boundaries in the display timezone
+    let viewMonthStart: Date;
+    let viewMonthEnd: Date;
+    
+    if (timeMode === 'local') {
+        // For local time, use local month boundaries (midnight local time)
+        const year = monthStart.getUTCFullYear();
+        const month = monthStart.getUTCMonth();
+        viewMonthStart = new Date(year, month, 1, 0, 0, 0);
+        const lastDay = new Date(year, month + 1, 0); // Last day of the month
+        viewMonthEnd = new Date(year, month, lastDay.getDate(), 23, 59, 59, 999);
+    } else {
+        // For game time, use UTC month boundaries
+        viewMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1, 0, 0, 0));
+        viewMonthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    }
 
-    // Clamp event dates to the current month view
-    const viewStart = eventStart < viewMonthStart ? viewMonthStart : eventStart;
-    const viewEnd = eventEnd > viewMonthEnd ? viewMonthEnd : eventEnd;
+    // Clamp to month boundaries for display
+    const displayStartTime = exactStartTime < viewMonthStart ? viewMonthStart : exactStartTime;
+    const displayEndTime = exactEndTime && exactEndTime > viewMonthEnd ? viewMonthEnd : (exactEndTime || displayStartTime);
 
     // If the event is not in this month, don't render it
-    if (viewEnd < viewMonthStart || viewStart > viewMonthEnd) return null;
+    if (displayEndTime < viewMonthStart || displayStartTime > viewMonthEnd) return null;
 
-    // Check if event spans across months
-    const startedInPreviousMonth = eventStart < viewMonthStart;
-    const continuesToNextMonth = (originalEndDate && originalEndDate > viewMonthEnd) || !range.end;
+    // Calculate position based on hour precision: position as fraction of month duration
+    const monthStartTimestamp = viewMonthStart.getTime();
+    const monthDurationMs = viewMonthEnd.getTime() - monthStartTimestamp;
+    const startOffsetMs = displayStartTime.getTime() - monthStartTimestamp;
+    const durationMs = displayEndTime.getTime() - displayStartTime.getTime();
 
-    let startDay = viewStart.getUTCDate();
-    
-    // Correctly calculate duration
-    const durationDays = (viewEnd.getTime() - viewStart.getTime()) / (1000 * 3600 * 24) + 1;
-    if (durationDays < 1) return null;
+    const leftPercent = (startOffsetMs / monthDurationMs) * 100;
+    const widthPercent = (durationMs / monthDurationMs) * 100;
 
+    // Check if event is currently active (always use game time for this check)
+    const gameNow = getGameTime(currentTime);
+    const isActive = exactEndTimeUTC 
+        ? (gameNow >= exactStartTimeUTC && gameNow < exactEndTimeUTC)
+        : false;
 
-    const leftPercent = ((startDay - 1) / daysInMonth) * 100;
-    const widthPercent = (durationDays / daysInMonth) * 100;
+    // Check if event spans across months (for visual indicators) - use display times
+    const startedInPreviousMonth = exactStartTime < viewMonthStart;
+    const continuesToNextMonth = exactEndTime && exactEndTime > viewMonthEnd;
 
 
     let Icon: React.ElementType = Star;
@@ -163,9 +321,6 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, o
     const eventTypeMatch = event.description.match(/^(\w+\s*Event)/);
     const eventType = eventTypeMatch ? `(${eventTypeMatch[1]})` : '';
 
-    const dateFormat = 'MMM d, yyyy';
-    const originalStartDate = parseDate(range.start);
-    
     const [mounted, setMounted] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
@@ -247,18 +402,20 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, o
         <>
             <div
                 className={cn(
-                    "absolute px-2 py-1 flex items-center gap-2 text-xs font-bold z-10 h-8 cursor-default border",
+                    "absolute px-2 py-1 flex items-center gap-2 text-xs font-bold z-10 h-8 cursor-default border transition-all duration-200",
                     colorClasses.bg,
                     colorClasses.border,
                     startedInPreviousMonth ? "rounded-r-lg" : "rounded-l-lg",
                     continuesToNextMonth && !startedInPreviousMonth ? "rounded-r-none rounded-l-lg" : "",
                     startedInPreviousMonth && !continuesToNextMonth ? "rounded-l-none rounded-r-lg" : "",
                     startedInPreviousMonth && continuesToNextMonth ? "rounded-none" : "",
-                    !startedInPreviousMonth && !continuesToNextMonth ? "rounded-lg" : ""
+                    !startedInPreviousMonth && !continuesToNextMonth ? "rounded-lg" : "",
+                    isActive && "ring-2 ring-white shadow-lg shadow-white/20"
                 )}
                 style={{
                     left: `${leftPercent}%`,
                     width: `max(calc(${widthPercent}% - 2px), 24px)`,
+                    ...(isCompleted && { filter: 'saturate(0.3)', opacity: 0.75 })
                 }}
                 onMouseEnter={(e) => {
                     setIsHovered(true);
@@ -282,15 +439,15 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, o
                     onClick={(e) => e.stopPropagation()}
                     className="h-3 w-3 flex-shrink-0 mr-1"
                 />
-                <Icon className="h-4 w-4 flex-shrink-0" />
-                <span className={cn("truncate", isCompleted && "opacity-30 grayscale")}>{event.name}</span>
+                <Icon className="h-4 w-4 flex-shrink-0" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
+                <span className="truncate">{event.name}</span>
                 {continuesToNextMonth && (
                     <ChevronRight className="h-3 w-3 flex-shrink-0 opacity-60 ml-auto" />
                 )}
             </div>
             {mounted && isHovered && mousePos && typeof window !== 'undefined' && createPortal(
                 <div ref={tooltipRef} style={tooltipStyle}>
-                    <MonthlyTooltipContent event={event} originalStartDate={originalStartDate} originalEndDate={originalEndDate} range={range} />
+                    <MonthlyTooltipContent event={event} exactStartTime={exactStartTimeUTC} exactEndTime={exactEndTimeUTC} timeMode={timeMode} timeFormat={timeFormat} />
                 </div>,
                 document.body
             )}
@@ -298,10 +455,36 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, o
     );
 };
 
-export default function MonthlyTimeline() {
+export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' }: { timeMode?: TimeDisplayMode; timeFormat?: TimeFormat }) {
     const { isCategoryEnabled } = useEventPreferences();
-    const { isEventCompleted: isMonthlyEventCompleted, toggleEventCompletion: toggleMonthlyEventCompletion, resetMonth, mounted: monthlyCompletionsMounted } = useMonthlyCompletions();
+    const { isEventCompleted: isMonthlyEventCompletedBase, toggleEventCompletion: toggleMonthlyEventCompletion, resetMonth, mounted: monthlyCompletionsMounted } = useMonthlyCompletions();
     const [now, setNow] = useState<Date | null>(null);
+    
+    // Wrap isEventCompleted to respect timezone - only show as completed if event has ended in the selected timezone
+    const isMonthlyEventCompleted = useCallback((eventName: string, range: { start: string; end?: string }, event?: GameEvent) => {
+        // Check if it's marked as completed
+        if (!isMonthlyEventCompletedBase(eventName, range)) {
+            return false;
+        }
+        
+        // If marked as completed, verify the event has ended in the selected timezone
+        if (range.end && now && event) {
+            // Get the event's actual end time
+            const exactEndTimeUTC = getEventEndTime(event, range.end);
+            
+            // Get current time in the display timezone
+            const currentTimeInDisplayTimezone = timeMode === 'local' ? now : getGameTime(now);
+            
+            // Get event end time in the display timezone
+            const endTimeInDisplayTimezone = timeMode === 'local' ? toLocalTime(exactEndTimeUTC) : exactEndTimeUTC;
+            
+            // Only show as completed if the event has actually ended in the display timezone
+            return currentTimeInDisplayTimezone >= endTimeInDisplayTimezone;
+        }
+        
+        // If no end date or no current time, just use the stored completion status
+        return true;
+    }, [isMonthlyEventCompletedBase, timeMode, now]);
 
     const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
 
@@ -313,7 +496,11 @@ export default function MonthlyTimeline() {
     }, []);
 
     const gameNow = useMemo(() => now ? getGameTime(now) : new Date(), [now]);
-    const displayNow = gameNow;
+    // Calculate display time based on timeMode
+    const displayNow = useMemo(() => {
+        if (!now) return new Date();
+        return timeMode === 'local' ? now : gameNow;
+    }, [now, timeMode, gameNow]);
 
     const monthStart = useMemo(() => {
         const d = new Date(Date.UTC(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth(), 1));
@@ -322,10 +509,34 @@ export default function MonthlyTimeline() {
     
     const daysInMonth = useMemo(() => getDaysInMonth(monthStart.getUTCFullYear(), monthStart.getUTCMonth()), [monthStart]);
 
-    const isCurrentMonth = monthStart.getUTCFullYear() === displayNow.getUTCFullYear() &&
-                           monthStart.getUTCMonth() === displayNow.getUTCMonth();
+    // Calculate isCurrentMonth and todayIndex using display timezone
+    const isCurrentMonth = useMemo(() => {
+        if (timeMode === 'local') {
+            const localNow = now || new Date();
+            return monthStart.getUTCFullYear() === localNow.getFullYear() &&
+                   monthStart.getUTCMonth() === localNow.getMonth();
+        } else {
+            return monthStart.getUTCFullYear() === gameNow.getUTCFullYear() &&
+                   monthStart.getUTCMonth() === gameNow.getUTCMonth();
+        }
+    }, [monthStart, timeMode, now, gameNow]);
     
-    const todayIndex = isCurrentMonth ? gameNow.getUTCDate() - 1 : -1;
+    const todayIndex = useMemo(() => {
+        if (!isCurrentMonth) return -1;
+        if (timeMode === 'local' && now) {
+            // Get the day of month in local time
+            const localDate = now.getDate();
+            // Month start is always in UTC, so we need to compare properly
+            const localMonth = now.getMonth();
+            const localYear = now.getFullYear();
+            if (monthStart.getUTCFullYear() === localYear && monthStart.getUTCMonth() === localMonth) {
+                return localDate - 1;
+            }
+            return -1;
+        } else {
+            return gameNow.getUTCDate() - 1;
+        }
+    }, [isCurrentMonth, timeMode, now, gameNow, monthStart]);
 
     const { dungeonUnlockEvents, raidUnlockEvents, roguelikeEvents, otherEvents } = useMemo(() => {
         const viewMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1, 5,0,0));
@@ -335,12 +546,21 @@ export default function MonthlyTimeline() {
         // Filter out deprecated patrols from monthly view
         const deprecatedPatrols = ['Ancient City Patrol', 'Brigand Camp Patrol'];
 
-        const checkRange = (range: {start?: string, end?: string}) => {
+        const checkRange = (range: {start?: string, end?: string}, event?: GameEvent) => {
             if (!range.start) return false; // Must have start date for monthly
             const eventStart = new Date(range.start + 'T00:00:00Z');
+            // Default to 5 AM game time (7 AM UTC) if event has no specific schedule
+            if (event && event.schedule.type === 'none') {
+                eventStart.setUTCHours(7, 0, 0, 0); // 5 AM game time = 7 AM UTC
+            }
             const eventEnd = range.end ? new Date(range.end + 'T00:00:00Z') : null;
-             if (eventEnd) { // Has a start and end
-                if(eventStart >= viewMonthEnd || addDays(eventEnd,1) <= viewMonthStart) return false;
+            if (eventEnd) {
+                // Events without specific times end at 5 AM game time (7 AM UTC) on the day after the end date
+                if (event && event.schedule.type === 'none') {
+                    eventEnd.setUTCDate(eventEnd.getUTCDate() + 1);
+                    eventEnd.setUTCHours(7, 0, 0, 0); // 5 AM game time = 7 AM UTC on the next day
+                }
+                if(eventStart >= viewMonthEnd || eventEnd <= viewMonthStart) return false;
              } else { // Only has a start date (permanent content)
                 if (eventStart >= viewMonthEnd) return false;
              }
@@ -354,10 +574,10 @@ export default function MonthlyTimeline() {
                 if (!e.dateRange && !e.dateRanges) return false;
 
                 if (e.dateRanges) {
-                    return e.dateRanges.some(checkRange);
+                    return e.dateRanges.some(range => checkRange(range, e));
                 }
                 if (e.dateRange) {
-                    return checkRange(e.dateRange);
+                    return checkRange(e.dateRange, e);
                 }
                 return false;
             })
@@ -473,7 +693,7 @@ export default function MonthlyTimeline() {
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <h3 className="text-lg font-semibold text-center">
-                        {format(monthStart, 'MMMM yyyy')} (Game Time)
+                        {format(monthStart, 'MMMM yyyy')}
                     </h3>
                     <div className="flex items-center gap-2">
                         {monthlyCompletionsMounted && (
@@ -535,8 +755,11 @@ export default function MonthlyTimeline() {
                                           range={event.dateRange!} 
                                           monthStart={monthStart} 
                                           daysInMonth={daysInMonth}
-                                          isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, event.dateRange!)}
+                                          isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, event.dateRange!, event)}
                                           onToggleCompletion={() => toggleMonthlyEventCompletion(event.name, event.dateRange!)}
+                                          currentTime={now!}
+                                          timeMode={timeMode}
+                                          timeFormat={timeFormat}
                                       />
                                   ))}
                                </div>
@@ -550,8 +773,11 @@ export default function MonthlyTimeline() {
                                           range={event.dateRange!} 
                                           monthStart={monthStart} 
                                           daysInMonth={daysInMonth}
-                                          isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, event.dateRange!)}
+                                          isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, event.dateRange!, event)}
                                           onToggleCompletion={() => toggleMonthlyEventCompletion(event.name, event.dateRange!)}
+                                          currentTime={now!}
+                                          timeMode={timeMode}
+                                          timeFormat={timeFormat}
                                       />
                                   ))}
                                </div>
@@ -565,8 +791,11 @@ export default function MonthlyTimeline() {
                                           range={event.dateRange!} 
                                           monthStart={monthStart} 
                                           daysInMonth={daysInMonth}
-                                          isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, event.dateRange!)}
+                                          isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, event.dateRange!, event)}
                                           onToggleCompletion={() => toggleMonthlyEventCompletion(event.name, event.dateRange!)}
+                                          currentTime={now!}
+                                          timeMode={timeMode}
+                                          timeFormat={timeFormat}
                                       />
                                   ))}
                                </div>
@@ -582,8 +811,11 @@ export default function MonthlyTimeline() {
                                             range={range}
                                             monthStart={monthStart} 
                                             daysInMonth={daysInMonth}
-                                            isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, range)}
+                                            isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, range, event)}
                                             onToggleCompletion={() => toggleMonthlyEventCompletion(event.name, range)}
+                                            currentTime={now!}
+                                            timeMode={timeMode}
+                                            timeFormat={timeFormat}
                                           />
                                         ))}
                                       </Fragment>
@@ -594,23 +826,59 @@ export default function MonthlyTimeline() {
                                         range={event.dateRange}
                                         monthStart={monthStart} 
                                         daysInMonth={daysInMonth}
-                                        isCompleted={monthlyCompletionsMounted && event.dateRange && isMonthlyEventCompleted(event.name, event.dateRange)}
+                                        isCompleted={monthlyCompletionsMounted && event.dateRange && isMonthlyEventCompleted(event.name, event.dateRange, event)}
                                         onToggleCompletion={() => event.dateRange && toggleMonthlyEventCompletion(event.name, event.dateRange)}
+                                        currentTime={now!}
+                                        timeMode={timeMode}
+                                        timeFormat={timeFormat}
                                       />
                                     ) : null}
                                 </div>
                             ))}
                         </div>
                         
-                        {/* Current Day Indicator */}
-                        {isCurrentMonth && (
-                            <div
-                                className="absolute top-0 h-full w-0.5 bg-accent z-10"
-                                style={{ left: `calc(${((todayIndex) / daysInMonth) * 100}% + (100% / ${daysInMonth} / 2))` }}
-                            >
-                               <div className="absolute -top-5 -translate-x-1/2 text-xs font-bold text-accent bg-background px-1 rounded">TODAY</div>
-                            </div>
-                        )}
+                        {/* Current Time Indicator */}
+                        {isCurrentMonth && now && (() => {
+                            // Calculate month boundaries in display timezone
+                            let viewMonthStart: Date;
+                            let viewMonthEnd: Date;
+                            
+                            if (timeMode === 'local') {
+                                const localMonthStart = new Date(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1, 0, 0, 0);
+                                viewMonthStart = new Date(localMonthStart.getTime());
+                                const lastDay = new Date(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0);
+                                viewMonthEnd = new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), 23, 59, 59);
+                            } else {
+                                viewMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1, 0, 0, 0));
+                                viewMonthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0, 23, 59, 59));
+                            }
+                            
+                            // Calculate position of current time within the month
+                            const monthStartTimestamp = viewMonthStart.getTime();
+                            const monthDurationMs = viewMonthEnd.getTime() - monthStartTimestamp;
+                            const currentOffsetMs = displayNow.getTime() - monthStartTimestamp;
+                            const currentTimePercent = (currentOffsetMs / monthDurationMs) * 100;
+                            
+                            // Only show if current time is within this month
+                            if (currentTimePercent >= 0 && currentTimePercent <= 100) {
+                                const timeFormatStr = timeFormat === '12h' ? 'hh:mm a' : 'HH:mm';
+                                const timeStr = timeMode === 'game'
+                                    ? displayNow.toLocaleTimeString('en-US', { timeZone: 'UTC', hour12: timeFormat === '12h', hour: '2-digit', minute: '2-digit' })
+                                    : format(displayNow, timeFormatStr);
+                                
+                                return (
+                                    <div
+                                        className="absolute top-0 h-full w-0.5 bg-accent z-30 pointer-events-none"
+                                        style={{ left: `${currentTimePercent}%` }}
+                                    >
+                                        <div className="absolute -top-5 -translate-x-1/2 text-xs font-bold text-accent bg-background px-1 rounded whitespace-nowrap">
+                                            {timeStr}
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()}
                     </div>
                 </div>
 
