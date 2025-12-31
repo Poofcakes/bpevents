@@ -69,12 +69,11 @@ const checkDateInRange = (event: GameEvent, date: Date) => {
 }
 
 
-const getDayOccurrences = (event: GameEvent, dayDate: Date, dayDisplayMode: 'game-day' | 'calendar-day' = 'game-day', timeMode: TimeDisplayMode = 'game'): {start: Date, end?: Date}[] => {
+const getDayOccurrences = (event: GameEvent, dayDate: Date): {start: Date, end?: Date}[] => {
     const { schedule } = event;
     const occurrences: {start: Date, end?: Date}[] = [];
     
-    // Calculate the day start time based on display mode
-    // The dayDate parameter should already be set to the correct starting point (midnight for calendar day, game reset for game day)
+    // The dayDate parameter should already be set to the game day start (5 AM UTC-2 = 7 AM UTC)
     const dayStart = new Date(dayDate);
     // Don't adjust the hours - dayDate is already at the correct starting point
     const dayEnd = new Date(dayStart);
@@ -98,7 +97,8 @@ const getDayOccurrences = (event: GameEvent, dayDate: Date, dayDisplayMode: 'gam
             case 'hourly':
                 for (let i = 0; i < 24; i++) {
                     const start = new Date(currentCalendarDate);
-                    start.setUTCHours(i, schedule.minute);
+                    // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+                    start.setUTCHours(i + 2, schedule.minute);
                     const end = event.durationMinutes ? new Date(start.getTime() + event.durationMinutes * 60 * 1000) : undefined;
                     occurrences.push({ start, end });
                 }
@@ -106,7 +106,8 @@ const getDayOccurrences = (event: GameEvent, dayDate: Date, dayDisplayMode: 'gam
             case 'multi-hourly':
                 for (let i = 0; i < 24; i += schedule.hours) {
                     const start = new Date(currentCalendarDate);
-                    start.setUTCHours(i + (schedule.offsetHours || 0), schedule.minute);
+                    // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+                    start.setUTCHours(i + (schedule.offsetHours || 0) + 2, schedule.minute);
                     const end = event.durationMinutes ? new Date(start.getTime() + event.durationMinutes * 60 * 1000) : undefined;
                     occurrences.push({ start, end });
                 }
@@ -115,7 +116,8 @@ const getDayOccurrences = (event: GameEvent, dayDate: Date, dayDisplayMode: 'gam
                 if (schedule.days.includes(currentCalendarDate.getUTCDay())) {
                     schedule.times.forEach(time => {
                         const start = new Date(currentCalendarDate);
-                        start.setUTCHours(time.hour, time.minute);
+                        // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+                        start.setUTCHours(time.hour + 2, time.minute);
                         const end = event.durationMinutes ? new Date(start.getTime() + event.durationMinutes * 60 * 1000) : undefined;
                         occurrences.push({ start, end });
                     });
@@ -124,10 +126,12 @@ const getDayOccurrences = (event: GameEvent, dayDate: Date, dayDisplayMode: 'gam
             case 'daily-intervals':
                  schedule.intervals.forEach(interval => {
                     const start = new Date(currentCalendarDate);
-                    start.setUTCHours(interval.start.hour, interval.start.minute);
+                    // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+                    start.setUTCHours(interval.start.hour + 2, interval.start.minute);
                     
                     const end = new Date(currentCalendarDate);
-                    end.setUTCHours(interval.end.hour, interval.end.minute);
+                    // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+                    end.setUTCHours(interval.end.hour + 2, interval.end.minute);
                     
                     if (end < start) { // interval crosses midnight
                          end.setUTCDate(end.getUTCDate() + 1);
@@ -139,10 +143,12 @@ const getDayOccurrences = (event: GameEvent, dayDate: Date, dayDisplayMode: 'gam
                 if (schedule.days.includes(currentCalendarDate.getUTCDay())) {
                     schedule.intervals.forEach(interval => {
                         const start = new Date(currentCalendarDate);
-                        start.setUTCHours(interval.start.hour, interval.start.minute);
+                        // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+                        start.setUTCHours(interval.start.hour + 2, interval.start.minute);
                         
                         const end = new Date(currentCalendarDate);
-                        end.setUTCHours(interval.end.hour, interval.end.minute);
+                        // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+                        end.setUTCHours(interval.end.hour + 2, interval.end.minute);
                         
                         if (end < start) { // interval crosses midnight
                             end.setUTCDate(end.getUTCDate() + 1);
@@ -278,19 +284,21 @@ const EventTooltipContent = memo(({ event, occurrence, timeMode, timeFormat, isT
     // Calculate time until/remaining
     let timeInfo: string | null = null;
     if (isToday && now) {
-        const realNow = now;
-        const start = toLocalTime(occurrence.start);
-        const end = toLocalTime(effectiveEndDate);
-        const timeUntilStart = start.getTime() - realNow.getTime();
-        const timeUntilEnd = end.getTime() - realNow.getTime();
+        // occurrence.start and effectiveEndDate are stored in UTC
+        // Compare UTC timestamps directly
+        const nowTime = now.getTime();
+        const startTime = occurrence.start.getTime();
+        const endTime = effectiveEndDate.getTime();
+        const timeUntilStart = startTime - nowTime;
+        const timeUntilEnd = endTime - nowTime;
         
         if (isInstantEvent) {
             // Instant events (like boarlets)
             if (timeUntilStart > 0) {
-                timeInfo = `Happens in ${formatDuration(timeUntilStart)}`;
+                timeInfo = `Spawns in ${formatDuration(timeUntilStart)}`;
             } else {
-                const timeAgo = realNow.getTime() - start.getTime();
-                timeInfo = `Happened ${formatDuration(timeAgo)} ago`;
+                const timeAgo = nowTime - startTime;
+                timeInfo = `Spawned ${formatDuration(timeAgo)} ago`;
             }
         } else {
             // Regular events with duration
@@ -302,7 +310,7 @@ const EventTooltipContent = memo(({ event, occurrence, timeMode, timeFormat, isT
                 timeInfo = `Active! ${formatDuration(timeUntilEnd)} left`;
             } else {
                 // Event has ended
-                const timeAgo = realNow.getTime() - end.getTime();
+                const timeAgo = nowTime - endTime;
                 timeInfo = `Ended ${formatDuration(timeAgo)} ago`;
             }
         }
@@ -414,17 +422,22 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
     
     useEffect(() => {
         if (!isToday) {
-            setIsPast(new Date() > toLocalTime(effectiveEndDate));
+            // For past days, compare UTC times directly
+            const nowUTC = new Date();
+            setIsPast(nowUTC.getTime() > effectiveEndDate.getTime());
             setIsActive(false);
             return;
         }
 
         const checkStatus = () => {
             const realNow = new Date();
-            const start = toLocalTime(occurrence.start);
-            const end = toLocalTime(effectiveEndDate);
-            setIsActive(realNow >= start && realNow < end);
-            setIsPast(realNow > end);
+            // occurrence.start and occurrence.end are stored in UTC
+            // Compare UTC timestamps directly
+            const nowTime = realNow.getTime();
+            const startTime = occurrence.start.getTime();
+            const endTime = effectiveEndDate.getTime();
+            setIsActive(nowTime >= startTime && nowTime < endTime);
+            setIsPast(nowTime > endTime);
         };
 
         checkStatus();
@@ -650,32 +663,13 @@ TimelineEvent.displayName = 'TimelineEvent';
 
 const GAME_LAUNCH_DATE = new Date('2025-10-09T05:00:00Z'); // Game launches at reset time on Thursday Oct 9th.
 
-export type DayDisplayMode = 'game-day' | 'calendar-day';
-
 export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: TimeDisplayMode, timeFormat: TimeFormat }) {
     const { isCategoryEnabled } = useEventPreferences();
     const { isEventCompleted, toggleEventCompletion, resetDay, mounted: completionsMounted } = useDailyCompletions();
     const [selectedGameDate, setSelectedGameDate] = useState(() => getGameDate(new Date()));
-    const [dayDisplayMode, setDayDisplayMode] = useState<DayDisplayMode>('game-day');
     const timelineContainerRef = useRef<HTMLDivElement>(null);
     const hasScrolledRef = useRef(false);
     const [now, setNow] = useState<Date | null>(null);
-    
-    // Load day display mode from localStorage, default to 'game-day'
-    useEffect(() => {
-        const savedMode = localStorage.getItem('dayDisplayMode') as DayDisplayMode | null;
-        if (savedMode === 'game-day' || savedMode === 'calendar-day') {
-            setDayDisplayMode(savedMode);
-        } else {
-            // Default to 'game-day' if nothing is saved
-            setDayDisplayMode('game-day');
-        }
-    }, []);
-    
-    // Save day display mode to localStorage
-    useEffect(() => {
-        localStorage.setItem('dayDisplayMode', dayDisplayMode);
-    }, [dayDisplayMode]);
     
      useEffect(() => {
         setNow(new Date());
@@ -684,39 +678,15 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
     }, []);
 
     const gameDayStart = useMemo(() => {
-        if (dayDisplayMode === 'calendar-day') {
-            // For calendar day mode, start at midnight in the selected time mode
-            if (timeMode === 'game') {
-                // Calendar day in game time (UTC-2): midnight to midnight in UTC-2
-                // To represent midnight UTC-2 in a UTC Date object, we add 2 hours (UTC is ahead)
-                // So midnight UTC-2 = 2 AM UTC
-                // Use the calendar date from selectedGameDate (which represents a calendar day)
-                const year = selectedGameDate.getUTCFullYear();
-                const month = selectedGameDate.getUTCMonth();
-                const day = selectedGameDate.getUTCDate();
-                const start = new Date(Date.UTC(year, month, day, 2, 0, 0, 0));
+        // Game day mode: starts at 5 AM game time (UTC-2)
+        // To represent 5 AM UTC-2 in a UTC Date object, we add 2 hours
+        // So 5 AM UTC-2 = 7 AM UTC
+        const year = selectedGameDate.getUTCFullYear();
+        const month = selectedGameDate.getUTCMonth();
+        const day = selectedGameDate.getUTCDate();
+        const start = new Date(Date.UTC(year, month, day, 7, 0, 0, 0));
         return start;
-            } else {
-                // Local time: midnight in local timezone
-                // For calendar day mode with local time, use selectedGameDate's local date components
-                // selectedGameDate is a Date object, so getFullYear/getMonth/getDate gives us local components
-                const year = selectedGameDate.getFullYear();
-                const month = selectedGameDate.getMonth();
-                const day = selectedGameDate.getDate();
-                const start = new Date(year, month, day, 0, 0, 0, 0);
-                return start;
-            }
-        } else {
-            // Game day mode: starts at 5 AM game time (UTC-2)
-            // To represent 5 AM UTC-2 in a UTC Date object, we add 2 hours
-            // So 5 AM UTC-2 = 7 AM UTC
-            const year = selectedGameDate.getUTCFullYear();
-            const month = selectedGameDate.getUTCMonth();
-            const day = selectedGameDate.getUTCDate();
-            const start = new Date(Date.UTC(year, month, day, 7, 0, 0, 0));
-            return start;
-        }
-    }, [selectedGameDate, dayDisplayMode, timeMode]);
+    }, [selectedGameDate]);
     
     const gameDayEnd = useMemo(() => {
         const end = new Date(gameDayStart);
@@ -724,39 +694,16 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
         return end;
     }, [gameDayStart]);
 
-    // Calculate game day number(s) for display
+    // Calculate game day number for display
     const gameDayNumbers = useMemo(() => {
         const launchDate = new Date(GAME_LAUNCH_DATE);
         launchDate.setUTCHours(0, 0, 0, 0);
         
-        if (dayDisplayMode === 'game-day') {
-            // Single game day
-            const selectedDate = new Date(selectedGameDate);
-            selectedDate.setUTCHours(0, 0, 0, 0);
-            const dayNumber = differenceInDays(selectedDate, launchDate) + 1;
-            return [dayNumber];
-        } else {
-            // Calendar day mode - calculate which game days it spans
-            // Calendar day goes from gameDayStart to gameDayEnd
-            // Game days reset at 5 AM game time (7 AM UTC)
-            const gameDayStartDate = getGameDate(gameDayStart);
-            const gameDayEndDate = getGameDate(new Date(gameDayEnd.getTime() - 1)); // Subtract 1ms to get the game day before the end
-            
-            const startDate = new Date(gameDayStartDate);
-            startDate.setUTCHours(0, 0, 0, 0);
-            const endDate = new Date(gameDayEndDate);
-            endDate.setUTCHours(0, 0, 0, 0);
-            
-            const startDayNumber = differenceInDays(startDate, launchDate) + 1;
-            const endDayNumber = differenceInDays(endDate, launchDate) + 1;
-            
-            if (startDayNumber === endDayNumber) {
-                return [startDayNumber];
-            } else {
-                return [startDayNumber, endDayNumber];
-            }
-        }
-    }, [selectedGameDate, dayDisplayMode, gameDayStart, gameDayEnd]);
+        const selectedDate = new Date(selectedGameDate);
+        selectedDate.setUTCHours(0, 0, 0, 0);
+        const dayNumber = differenceInDays(selectedDate, launchDate) + 1;
+        return [dayNumber];
+    }, [selectedGameDate]);
 
     // For display purposes, convert to the selected time mode
     // gameDayStart is stored in UTC (representing game time)
@@ -782,61 +729,29 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
 
     const displayDate = timeMode === 'game' ? selectedGameDate : displayDayStart;
     
-    // Get the calendar dates that are displayed (for calendar day mode, might span two days)
-    const displayedCalendarDates = useMemo(() => {
-        if (dayDisplayMode === 'calendar-day') {
-            const startDate = new Date(displayDayStart.getFullYear(), displayDayStart.getMonth(), displayDayStart.getDate());
-            const endDate = new Date(displayDayEnd.getFullYear(), displayDayEnd.getMonth(), displayDayEnd.getDate());
-            
-            // Check if it spans two different calendar days
-            if (startDate.getTime() !== endDate.getTime()) {
-                return { start: startDate, end: endDate, spansTwoDays: true };
-            }
-            return { start: startDate, end: null, spansTwoDays: false };
-        }
-        return { start: null, end: null, spansTwoDays: false };
-    }, [dayDisplayMode, displayDayStart, displayDayEnd]);
-    
-    // Get the calendar dates that a game day spans (for game-day mode, might span two calendar days)
+    // Get the calendar dates that a game day spans (might span two calendar days)
     const gameDayCalendarDates = useMemo(() => {
-        if (dayDisplayMode === 'game-day') {
-            // For game time mode, use UTC date components; for local time, use local date components
-            const startDate = timeMode === 'game' 
-                ? new Date(Date.UTC(displayDayStart.getUTCFullYear(), displayDayStart.getUTCMonth(), displayDayStart.getUTCDate()))
-                : new Date(displayDayStart.getFullYear(), displayDayStart.getMonth(), displayDayStart.getDate());
-            const endDate = timeMode === 'game'
-                ? new Date(Date.UTC(displayDayEnd.getUTCFullYear(), displayDayEnd.getUTCMonth(), displayDayEnd.getUTCDate()))
-                : new Date(displayDayEnd.getFullYear(), displayDayEnd.getMonth(), displayDayEnd.getDate());
-            
-            // Check if it spans two different calendar days
-            if (startDate.getTime() !== endDate.getTime()) {
-                return { start: startDate, end: endDate, spansTwoDays: true };
-            }
-            return { start: startDate, end: null, spansTwoDays: false };
+        // For game time mode, use UTC date components; for local time, use local date components
+        const startDate = timeMode === 'game' 
+            ? new Date(Date.UTC(displayDayStart.getUTCFullYear(), displayDayStart.getUTCMonth(), displayDayStart.getUTCDate()))
+            : new Date(displayDayStart.getFullYear(), displayDayStart.getMonth(), displayDayStart.getDate());
+        const endDate = timeMode === 'game'
+            ? new Date(Date.UTC(displayDayEnd.getUTCFullYear(), displayDayEnd.getUTCMonth(), displayDayEnd.getUTCDate()))
+            : new Date(displayDayEnd.getFullYear(), displayDayEnd.getMonth(), displayDayEnd.getDate());
+        
+        // Check if it spans two different calendar days
+        if (startDate.getTime() !== endDate.getTime()) {
+            return { start: startDate, end: endDate, spansTwoDays: true };
         }
-        return { start: null, end: null, spansTwoDays: false };
-    }, [dayDisplayMode, displayDayStart, displayDayEnd, timeMode]);
+        return { start: startDate, end: null, spansTwoDays: false };
+    }, [displayDayStart, displayDayEnd, timeMode]);
     
     const isToday = useMemo(() => {
-        if (dayDisplayMode === 'calendar-day') {
-            const today = new Date();
-            if (timeMode === 'game') {
-                const selectedDate = new Date(selectedGameDate);
-                selectedDate.setUTCHours(0, 0, 0, 0);
-                const todayDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-                return selectedDate.getTime() === todayDate.getTime();
-            } else {
-                const selectedDate = new Date(displayDayStart.getFullYear(), displayDayStart.getMonth(), displayDayStart.getDate());
-                const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-                return selectedDate.getTime() === todayDate.getTime();
-            }
-        } else {
         const todayGameDate = getGameDate(new Date());
         return selectedGameDate.getUTCFullYear() === todayGameDate.getUTCFullYear() &&
                selectedGameDate.getUTCMonth() === todayGameDate.getUTCMonth() &&
                selectedGameDate.getUTCDate() === todayGameDate.getUTCDate();
-        }
-    }, [selectedGameDate, dayDisplayMode, timeMode, displayDayStart]);
+    }, [selectedGameDate]);
     
     const currentTimePosition = useMemo(() => {
         if (!isToday || !now) return -1;
@@ -870,9 +785,7 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
         const resetOccurrences: Array<{ name: string; icon: React.ElementType; colorClass: string; lineColor: string; occurrence: { start: Date; end?: Date } }> = [];
         
         // Daily reset is at 5 AM game time (7 AM UTC) every day
-        // Always calculate based on the selected date, ensuring we get the correct game day
-        // In calendar-day mode, we need to find which game day this calendar day belongs to
-        const dateForReset = dayDisplayMode === 'calendar-day' ? getGameDate(selectedGameDate) : selectedGameDate;
+        const dateForReset = selectedGameDate;
         const dailyResetTime = new Date(Date.UTC(dateForReset.getUTCFullYear(), dateForReset.getUTCMonth(), dateForReset.getUTCDate(), 7, 0, 0, 0)); // 5 AM game time = 7 AM UTC
         resetOccurrences.push({
             name: 'Daily Reset',
@@ -912,39 +825,18 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
         }
         
         return resetOccurrences;
-    }, [selectedGameDate, dayDisplayMode]);
+    }, [selectedGameDate]);
     
     const { boarletEvents, otherEvents } = useMemo(() => {
-        // For calendar day mode, we need to use a date that represents the calendar day at midnight
-        // For game day mode, selectedGameDate (which is a game date) is correct
-        let dateForOccurrences: Date;
-        if (dayDisplayMode === 'calendar-day') {
-            if (timeMode === 'game') {
-                // Calendar day in game time (UTC-2): midnight to midnight in UTC-2
-                // To represent midnight UTC-2 in a UTC Date object, we add 2 hours
-                // So midnight UTC-2 = 2 AM UTC
-                dateForOccurrences = new Date(Date.UTC(selectedGameDate.getUTCFullYear(), selectedGameDate.getUTCMonth(), selectedGameDate.getUTCDate(), 2, 0, 0, 0));
-            } else {
-                // In calendar day mode with local time, use selectedGameDate's local date components
-                // This matches what we use in gameDayStart calculation
-                dateForOccurrences = new Date(selectedGameDate.getFullYear(), selectedGameDate.getMonth(), selectedGameDate.getDate(), 0, 0, 0, 0);
-            }
-        } else {
-            // Game day mode: starts at 5 AM game time (UTC-2)
-            // To represent 5 AM UTC-2 in a UTC Date object, we add 2 hours
-            // So 5 AM UTC-2 = 7 AM UTC
-            const year = selectedGameDate.getUTCFullYear();
-            const month = selectedGameDate.getUTCMonth();
-            const day = selectedGameDate.getUTCDate();
-            dateForOccurrences = new Date(Date.UTC(year, month, day, 7, 0, 0, 0));
-        }
+        // selectedGameDate is a game date, set it to the game day start (5 AM UTC-2 = 7 AM UTC)
+        const dateForOccurrences = new Date(Date.UTC(selectedGameDate.getUTCFullYear(), selectedGameDate.getUTCMonth(), selectedGameDate.getUTCDate(), 7, 0, 0, 0));
         
         const filteredEvents = filterEventsByPreferences(events, isCategoryEnabled);
         const allEvents = filteredEvents
             .filter(event => event.schedule.type !== 'none')
             .map(event => ({
                 event,
-                occurrences: getDayOccurrences(event, dateForOccurrences, dayDisplayMode, timeMode)
+                occurrences: getDayOccurrences(event, dateForOccurrences)
             }))
             .filter(item => item.occurrences.length > 0);
 
@@ -964,27 +856,15 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
             });
         
         return { boarletEvents: boarlets, otherEvents: others };
-    }, [selectedGameDate, dayDisplayMode, timeMode, isCategoryEnabled, isToday, isEventCompleted, completionsMounted]);
+    }, [selectedGameDate, isCategoryEnabled, isToday, isEventCompleted, completionsMounted]);
 
     const changeDay = (amount: number) => {
         hasScrolledRef.current = false; // Allow scrolling on day change
         setSelectedGameDate(prev => {
             const newDate = new Date(prev);
-            if (dayDisplayMode === 'calendar-day') {
-                if (timeMode === 'local') {
-                    // For calendar day mode with local time, add/subtract days using local date
-                    newDate.setDate(newDate.getDate() + amount);
-                    return newDate;
-                } else {
-                    // For calendar day mode with game time, add/subtract days using UTC date
-                    newDate.setUTCDate(newDate.getUTCDate() + amount);
-                    return newDate;
-                }
-            } else {
-                // Game day mode: add/subtract days and convert to game date
+            // Add/subtract days and convert to game date
             newDate.setUTCDate(newDate.getUTCDate() + amount);
             return getGameDate(newDate);
-            }
         });
     };
     
@@ -1072,7 +952,7 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
             });
         }
         return markers;
-    }, [timeMode, timeFormat, displayDayStart, dayDisplayMode]);
+    }, [timeMode, timeFormat, displayDayStart]);
 
     const legendItems = useMemo(() => {
         const items = new Map<string, { icon: React.ElementType, color: string }>();
@@ -1105,66 +985,26 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                     </Button>
                     <div className="flex-1 flex flex-col items-center gap-2">
                     <h3 className="text-lg font-semibold text-center">
-                            {dayDisplayMode === 'calendar-day' ? (
-                                <>
-                                    Calendar Day: {displayedCalendarDates.spansTwoDays && displayedCalendarDates.end ? (
-                                        <>
-                                            {displayedCalendarDates.start.toLocaleDateString(timeMode === 'game' ? 'en-CA' : undefined, { 
+                        <div className="flex flex-col items-center">
+                            <div>
+                                Game Day #{gameDayNumbers[0]}: {gameDayCalendarDates.start.toLocaleDateString('en-US', { 
                             weekday: 'long',
                             timeZone: timeMode === 'game' ? 'UTC' : undefined,
                             year: 'numeric', month: 'long', day: 'numeric' 
-                                            })} - {displayedCalendarDates.end.toLocaleDateString(timeMode === 'game' ? 'en-CA' : undefined, { 
-                                                weekday: 'long',
-                                                timeZone: timeMode === 'game' ? 'UTC' : undefined,
-                                                year: 'numeric', month: 'long', day: 'numeric' 
-                                            })}
-                                        </>
-                                    ) : (
-                                        displayDayStart.toLocaleDateString(timeMode === 'game' ? 'en-CA' : undefined, { 
-                                            weekday: 'long',
-                                            timeZone: timeMode === 'game' ? 'UTC' : undefined,
-                                            year: 'numeric', month: 'long', day: 'numeric' 
-                                        })
-                                    )} - Game Day{gameDayNumbers.length > 1 ? 's' : ''} #{gameDayNumbers.length > 1 ? `${gameDayNumbers[0]}-${gameDayNumbers[1]}` : gameDayNumbers[0]}
-                                </>
-                            ) : (
-                                <>
-                                    Game Day #{gameDayNumbers[0]}: {gameDayCalendarDates.spansTwoDays && gameDayCalendarDates.end ? (
-                                        <>
-                                            {gameDayCalendarDates.start.toLocaleDateString(timeMode === 'game' ? 'en-CA' : undefined, { 
-                                                weekday: 'long',
-                                                timeZone: timeMode === 'game' ? 'UTC' : undefined,
-                                                year: 'numeric', month: 'long', day: 'numeric' 
-                                            })} - {gameDayCalendarDates.end.toLocaleDateString(timeMode === 'game' ? 'en-CA' : undefined, { 
-                                                weekday: 'long',
-                                                timeZone: timeMode === 'game' ? 'UTC' : undefined,
-                                                year: 'numeric', month: 'long', day: 'numeric' 
-                                            })}
-                                        </>
-                                    ) : (
-                                        displayDate.toLocaleDateString(timeMode === 'game' ? 'en-CA' : undefined, { 
-                                            weekday: 'long',
-                                            timeZone: timeMode === 'game' ? 'UTC' : undefined,
-                                            year: 'numeric', month: 'long', day: 'numeric' 
-                                        })
-                                    )}
-                                </>
-                            )} ({timeMode === 'game' ? 'Game Time' : 'Your Time'})
+                                })}
+                            </div>
+                            {gameDayCalendarDates.spansTwoDays && gameDayCalendarDates.end && (
+                                <div className="text-sm text-muted-foreground font-normal">
+                                    and {gameDayCalendarDates.end.toLocaleDateString('en-US', { 
+                                        weekday: 'long',
+                                        timeZone: timeMode === 'game' ? 'UTC' : undefined,
+                                        year: 'numeric', month: 'long', day: 'numeric' 
+                                    })} 
+                                    ({timeMode === 'game' ? ' Game Time' : ' Your Time'})
+                                </div>
+                            )}
+                        </div>
                     </h3>
-                        {/* Calendar day toggle temporarily hidden */}
-                        {/* <div className="flex items-center gap-2">
-                            <Label htmlFor="day-display-toggle" className="text-xs text-muted-foreground cursor-pointer">
-                                Game Day (5 AM reset)
-                            </Label>
-                            <Switch
-                                id="day-display-toggle"
-                                checked={dayDisplayMode === 'calendar-day'}
-                                onCheckedChange={(checked: boolean) => setDayDisplayMode(checked ? 'calendar-day' : 'game-day')}
-                            />
-                            <Label htmlFor="day-display-toggle" className="text-xs text-muted-foreground cursor-pointer">
-                                Calendar Day
-                            </Label>
-                        </div> */}
                     </div>
                     {completionsMounted && (
                         <Button 
@@ -1357,13 +1197,7 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                  {!isToday && (
                     <Button onClick={() => {
                         hasScrolledRef.current = false;
-                        if (dayDisplayMode === 'calendar-day' && timeMode === 'local') {
-                            // For calendar day mode with local time, use current local date
-                            setSelectedGameDate(new Date());
-                        } else {
-                            // For game day mode or calendar day mode with game time, use game date
                         setSelectedGameDate(getGameDate(new Date()));
-                        }
                     }} className="w-full">
                         Jump to Today
                     </Button>

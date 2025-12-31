@@ -286,7 +286,7 @@ export default function Home() {
       </main>
       <footer className="text-center py-4 text-muted-foreground text-sm border-t space-y-2">
         <p>BP:SR Event Tracker | Blue Protocol: Star Resonance</p>
-        <p>Last Updated: 30.12.2025</p>
+        <p>Last Updated: 31.12.2025</p>
         <div className="flex items-center justify-center gap-4 pt-2">
           <a
             href="https://ko-fi.com/poofcakes"
