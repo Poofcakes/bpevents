@@ -35,16 +35,17 @@ export default function EventCard({ event, nextOccurrence, currentTime }: EventC
   if (event.durationMinutes) {
     durationMinutes = event.durationMinutes;
   } else if (event.schedule.type === 'daily-intervals') {
+    // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
     const nextInterval = event.schedule.intervals.find(interval => {
         const start = new Date(nextOccurrence);
-        start.setUTCHours(interval.start.hour, interval.start.minute, 0, 0);
+        start.setUTCHours(interval.start.hour + 2, interval.start.minute, 0, 0); // Convert UTC-2 to UTC
         return start.getTime() === nextOccurrence.getTime();
     });
     if (nextInterval) {
         const start = new Date();
-        start.setUTCHours(nextInterval.start.hour, nextInterval.start.minute, 0, 0);
+        start.setUTCHours(nextInterval.start.hour + 2, nextInterval.start.minute, 0, 0); // Convert UTC-2 to UTC
         const end = new Date();
-        end.setUTCHours(nextInterval.end.hour, nextInterval.end.minute, 0, 0);
+        end.setUTCHours(nextInterval.end.hour + 2, nextInterval.end.minute, 0, 0); // Convert UTC-2 to UTC
         if (end < start) { // interval crosses midnight
           end.setDate(end.getDate() + 1);
         }

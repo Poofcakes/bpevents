@@ -31,18 +31,21 @@ const getEventStartTime = (event: GameEvent, dateString: string): Date => {
     }
     
     // For events with schedules, use the first occurrence time of the day
+    // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
     // Default to 5 AM (7 AM UTC) if we can't determine
     if (event.schedule.type === 'daily-intervals' || event.schedule.type === 'daily-intervals-specific') {
         const intervals = event.schedule.intervals;
         if (intervals && intervals.length > 0) {
-            date.setUTCHours(intervals[0].start.hour, intervals[0].start.minute, 0, 0);
+            // Times are in UTC-2, convert to UTC by adding 2 hours
+            date.setUTCHours(intervals[0].start.hour + 2, intervals[0].start.minute, 0, 0);
             return date;
         }
     }
     if (event.schedule.type === 'daily-specific') {
         const times = event.schedule.times;
         if (times && times.length > 0) {
-            date.setUTCHours(times[0].hour, times[0].minute, 0, 0);
+            // Times are in UTC-2, convert to UTC by adding 2 hours
+            date.setUTCHours(times[0].hour + 2, times[0].minute, 0, 0);
             return date;
         }
     }
@@ -64,12 +67,13 @@ const getEventEndTime = (event: GameEvent, dateString: string): Date => {
     }
     
     // For events with schedules, use the last occurrence end time of the day
-    // Schedule hours are stored as UTC hours directly (matching DailyTimeline behavior)
+    // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
     if (event.schedule.type === 'daily-intervals' || event.schedule.type === 'daily-intervals-specific') {
         const intervals = event.schedule.intervals;
         if (intervals && intervals.length > 0) {
             const lastInterval = intervals[intervals.length - 1];
-            date.setUTCHours(lastInterval.end.hour, lastInterval.end.minute, 0, 0);
+            // Times are in UTC-2, convert to UTC by adding 2 hours
+            date.setUTCHours(lastInterval.end.hour + 2, lastInterval.end.minute, 0, 0);
             // Only roll over to next day if end hour is before start hour (crosses midnight)
             // For normal intervals like 18:00-23:00, both are on the same date
             return date;
@@ -79,7 +83,8 @@ const getEventEndTime = (event: GameEvent, dateString: string): Date => {
         const times = event.schedule.times;
         if (times && times.length > 0 && event.durationMinutes) {
             const lastTime = times[times.length - 1];
-            date.setUTCHours(lastTime.hour, lastTime.minute, 0, 0);
+            // Times are in UTC-2, convert to UTC by adding 2 hours
+            date.setUTCHours(lastTime.hour + 2, lastTime.minute, 0, 0);
             date.setUTCMinutes(date.getUTCMinutes() + event.durationMinutes);
             return date;
         }
@@ -125,31 +130,39 @@ const MonthlyTooltipContent = memo(({ event, exactStartTime, exactEndTime, timeM
     const isValidStart = exactStartTime && !isNaN(exactStartTime.getTime());
     const isValidEnd = exactEndTime && !isNaN(exactEndTime.getTime());
     
-    // Convert to local time if needed, or format as UTC for game time
+    // exactStartTime and exactEndTime are stored in UTC (after adding 2 hours from UTC-2)
+    // Convert to display time based on timeMode
     let displayStartTime: Date | null = null;
     let displayEndTime: Date | null = null;
     
     if (isValidStart) {
         if (timeMode === 'local') {
-            displayStartTime = toLocalTime(exactStartTime);
+            // exactStartTime is in UTC, browser will convert to local timezone automatically
+            displayStartTime = new Date(exactStartTime);
         } else {
-            // For game time, use UTC directly
-            displayStartTime = exactStartTime;
+            // For game time, subtract 2 hours from UTC to display UTC-2
+            // exactStartTime is in UTC (e.g., 7 AM UTC representing 5 AM UTC-2)
+            // Subtract 2 hours to get 5 AM UTC, then format as UTC to show 5 AM
+            displayStartTime = new Date(exactStartTime.getTime() - (2 * 60 * 60 * 1000));
         }
     }
     
     if (isValidEnd) {
         if (timeMode === 'local') {
-            displayEndTime = toLocalTime(exactEndTime!);
+            // exactEndTime is in UTC, browser will convert to local timezone automatically
+            displayEndTime = new Date(exactEndTime!);
         } else {
-            // For game time, use UTC directly
-            displayEndTime = exactEndTime!;
+            // For game time, subtract 2 hours from UTC to display UTC-2
+            // exactEndTime is in UTC (e.g., 7 AM UTC representing 5 AM UTC-2)
+            // Subtract 2 hours to get 5 AM UTC, then format as UTC to show 5 AM
+            displayEndTime = new Date(exactEndTime!.getTime() - (2 * 60 * 60 * 1000));
         }
     }
     
     // Format dates and times
-    // For game time (UTC), format with UTC timezone
-    // For local time, format normally (date-fns uses local timezone by default)
+    // For game time, displayStartTime/displayEndTime are already in UTC-2 (after subtracting 2 hours)
+    // Format them as UTC to show the UTC-2 hours directly
+    // For local time, browser handles the conversion
     const startDateStr = displayStartTime 
         ? (timeMode === 'game'
             ? displayStartTime.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' })

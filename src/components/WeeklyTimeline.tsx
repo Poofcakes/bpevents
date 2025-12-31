@@ -203,10 +203,14 @@ const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek }: 
     const dateFormat = 'MMM d, yyyy';
     
     if (schedule.type === 'daily-specific') {
+        // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+        // Then format as UTC to display game time (since Weekly is always game time)
         const uniqueTimes = [...new Set(schedule.times.map(t => {
             const d = new Date();
-            d.setUTCHours(t.hour, t.minute);
-            return d.toLocaleTimeString('en-US', { timeZone, hour: '2-digit', minute: '2-digit' });
+            d.setUTCHours(t.hour + 2, t.minute); // Convert UTC-2 to UTC
+            // Format as UTC to show game time (subtract 2 hours by formatting the UTC-2 equivalent)
+            const gameTime = new Date(d.getTime() - (2 * 60 * 60 * 1000)); // Subtract 2 hours to show UTC-2
+            return gameTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
         }))];
         timeSummary = uniqueTimes.slice(0, 2).join(', ') + (uniqueTimes.length > 2 ? '...' : '');
     } else if (schedule.type === 'multi-hourly') {
@@ -214,10 +218,14 @@ const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek }: 
     } else if (schedule.type === 'hourly') {
         timeSummary = `Every hour at :${String(schedule.minute).padStart(2, '0')}`;
     } else if (schedule.type === 'daily-intervals' || schedule.type === 'daily-intervals-specific') {
+        // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+        // Then format as UTC to display game time (since Weekly is always game time)
          const uniqueTimes = [...new Set(schedule.intervals.map(t => {
             const d = new Date();
-            d.setUTCHours(t.start.hour, t.start.minute);
-            return d.toLocaleTimeString('en-US', { timeZone, hour: '2-digit', minute: '2-digit' });
+            d.setUTCHours(t.start.hour + 2, t.start.minute); // Convert UTC-2 to UTC
+            // Format as UTC to show game time (subtract 2 hours by formatting the UTC-2 equivalent)
+            const gameTime = new Date(d.getTime() - (2 * 60 * 60 * 1000)); // Subtract 2 hours to show UTC-2
+            return gameTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
         }))];
         timeSummary = uniqueTimes.slice(0, 2).join(', ') + (uniqueTimes.length > 2 ? '...' : '');
     }
@@ -368,19 +376,28 @@ const WeeklyEventBar = ({ event, daySpans, isCompleted, onToggleCompletion, isCu
     const dateFormat = 'MMM d, yyyy';
 
     if (schedule.type === 'daily-intervals' || schedule.type === 'daily-intervals-specific') {
+        // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+        // Then format as UTC to display game time (since Weekly is always game time)
         timeSummary = schedule.intervals.map(iv => {
-            const start = new Date(0);
-            start.setUTCHours(iv.start.hour, iv.start.minute);
-            const end = new Date(0);
-            end.setUTCHours(iv.end.hour, iv.end.minute);
-            const formatOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', timeZone };
-            return `${start.toLocaleTimeString('en-US', formatOptions)} - ${end.toLocaleTimeString('en-US', formatOptions)}`;
+            const startUTC = new Date(0);
+            startUTC.setUTCHours(iv.start.hour + 2, iv.start.minute); // Convert UTC-2 to UTC
+            const endUTC = new Date(0);
+            endUTC.setUTCHours(iv.end.hour + 2, iv.end.minute); // Convert UTC-2 to UTC
+            // Format as UTC to show game time (subtract 2 hours by formatting the UTC-2 equivalent)
+            const startGameTime = new Date(startUTC.getTime() - (2 * 60 * 60 * 1000));
+            const endGameTime = new Date(endUTC.getTime() - (2 * 60 * 60 * 1000));
+            const formatOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' };
+            return `${startGameTime.toLocaleTimeString('en-US', formatOptions)} - ${endGameTime.toLocaleTimeString('en-US', formatOptions)}`;
         }).join(', ');
     } else if (schedule.type === 'daily-specific') {
+        // Times in events.ts are in UTC-2 (game time), convert to UTC by adding 2 hours
+        // Then format as UTC to display game time (since Weekly is always game time)
          const uniqueTimes = [...new Set(schedule.times.map(t => {
             const d = new Date();
-            d.setUTCHours(t.hour, t.minute);
-            return d.toLocaleTimeString('en-US', { timeZone, hour: '2-digit', minute: '2-digit' });
+            d.setUTCHours(t.hour + 2, t.minute); // Convert UTC-2 to UTC
+            // Format as UTC to show game time (subtract 2 hours by formatting the UTC-2 equivalent)
+            const gameTime = new Date(d.getTime() - (2 * 60 * 60 * 1000)); // Subtract 2 hours to show UTC-2
+            return gameTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
         }))];
         timeSummary = uniqueTimes.join(', ');
     } else if (isDailyEvent(event)) {

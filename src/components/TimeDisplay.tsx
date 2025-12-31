@@ -94,7 +94,7 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat }: TimeD
       <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm md:text-base">
         <div className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg bg-secondary/50">
             <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-accent flex-shrink-0" />
-              <div className="flex flex-col text-right">
+              <div className="flex flex-col text-right min-w-[140px] sm:min-w-[180px]">
                   <span className="font-semibold text-foreground">
                       {formatDate(currentTime, selectedTimezone)}
                   </span>
@@ -104,8 +104,8 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat }: TimeD
           <TooltipTrigger asChild>
             <div className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg bg-secondary/50 cursor-help">
               <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-accent flex-shrink-0" />
-              <div className="flex flex-col text-right">
-                <span className="font-semibold text-foreground">
+              <div className="flex flex-col text-right min-w-[70px] sm:min-w-[85px]">
+                <span className="font-semibold text-foreground font-mono">
                   {formatTime(currentTime, selectedTimezone)}
                 </span>
               </div>
@@ -119,8 +119,8 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat }: TimeD
           <TooltipTrigger asChild>
             <div className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg bg-secondary/50 cursor-help">
               <Globe className="h-4 w-4 sm:h-5 sm:w-5 text-accent flex-shrink-0" />
-              <div className="flex flex-col text-right">
-                <span className="font-semibold text-foreground">
+              <div className="flex flex-col text-right min-w-[70px] sm:min-w-[85px]">
+                <span className="font-semibold text-foreground font-mono">
                   {gameTime ? gameTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: timeFormat === '12h' }) : '--:--:--'}
                 </span>
               </div>

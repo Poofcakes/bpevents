@@ -8,6 +8,8 @@ import { events, GameEvent } from '@/lib/events';
 import { getGameTime, toLocalTime, formatDuration, getGameDate, DAILY_RESET_HOUR_UTC, getWeekPeriod, GAME_TIMEZONE_OFFSET, BIWEEKLY_REFERENCE_RESET } from '@/lib/time';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { ChevronLeft, ChevronRight, Star, Swords, Crown, Gamepad2, Users, Footprints, ShieldAlert, HeartHandshake, ShieldCheck, KeySquare, BrainCircuit, RotateCcw, PiggyBank, UtensilsCrossed, Gift, CalendarHeart, Ghost, Target, RefreshCw, CalendarDays, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TimeDisplayMode, TimeFormat } from '@/app/page';
@@ -670,6 +672,7 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
     const timelineContainerRef = useRef<HTMLDivElement>(null);
     const hasScrolledRef = useRef(false);
     const [now, setNow] = useState<Date | null>(null);
+    const [calendarOpen, setCalendarOpen] = useState(false);
     
      useEffect(() => {
         setNow(new Date());
@@ -864,10 +867,91 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
             const newDate = new Date(prev);
             // Add/subtract days and convert to game date
             newDate.setUTCDate(newDate.getUTCDate() + amount);
-            return getGameDate(newDate);
+            const gameDate = getGameDate(newDate);
+            
+            // Prevent going earlier than game day #1 (Oct 9, 2025)
+            const launchDate = new Date(GAME_LAUNCH_DATE);
+            launchDate.setUTCHours(0, 0, 0, 0);
+            const gameDateNormalized = new Date(gameDate);
+            gameDateNormalized.setUTCHours(0, 0, 0, 0);
+            
+            if (gameDateNormalized.getTime() < launchDate.getTime()) {
+                return prev; // Don't change if it would go before launch date
+            }
+            
+            return gameDate;
         });
     };
     
+    const handleCalendarDateSelect = (date: Date | undefined) => {
+        if (!date) return;
+        
+        hasScrolledRef.current = false;
+        const gameDate = getGameDate(date);
+        
+        // Prevent selecting a date before game day #1
+        const launchDate = new Date(GAME_LAUNCH_DATE);
+        launchDate.setUTCHours(0, 0, 0, 0);
+        const gameDateNormalized = new Date(gameDate);
+        gameDateNormalized.setUTCHours(0, 0, 0, 0);
+        
+        if (gameDateNormalized.getTime() >= launchDate.getTime()) {
+            setSelectedGameDate(gameDate);
+            setCalendarOpen(false);
+        }
+    };
+    
+    // Calculate day badges - one badge per day spanning the full portion of that day
+    const dayBadges = useMemo(() => {
+        const badges: Array<{ date: Date; startLeft: number; endLeft: number }> = [];
+        
+        // displayDayStart is already converted to the correct timezone (UTC-2 for game time, local for local time)
+        const baseTime = new Date(displayDayStart);
+        
+        // Get the date of the first hour (hour 0)
+        const firstHourDate = timeMode === 'game'
+            ? new Date(Date.UTC(baseTime.getUTCFullYear(), baseTime.getUTCMonth(), baseTime.getUTCDate()))
+            : new Date(baseTime.getFullYear(), baseTime.getMonth(), baseTime.getDate());
+        
+        // Check if the day changes during the 24-hour period
+        let dayChangeHour = 24; // Default: no day change
+        for (let hour = 1; hour < 24; hour++) {
+            const hourTime = new Date(baseTime.getTime() + hour * 60 * 60 * 1000);
+            const hourDate = timeMode === 'game'
+                ? new Date(Date.UTC(hourTime.getUTCFullYear(), hourTime.getUTCMonth(), hourTime.getUTCDate()))
+                : new Date(hourTime.getFullYear(), hourTime.getMonth(), hourTime.getDate());
+            
+            if (hourDate.getTime() !== firstHourDate.getTime()) {
+                dayChangeHour = hour;
+                break;
+            }
+        }
+        
+        // First day badge - spans from hour 0 to where the day changes (or full 24 hours)
+        badges.push({
+            date: firstHourDate,
+            startLeft: 0,
+            endLeft: dayChangeHour * PIXELS_PER_HOUR
+        });
+        
+        // If the day changes during the 24-hour period, add a second badge
+        if (dayChangeHour < 24) {
+            const lastHourTime = new Date(baseTime.getTime() + dayChangeHour * 60 * 60 * 1000);
+            const secondDayDate = timeMode === 'game'
+                ? new Date(Date.UTC(lastHourTime.getUTCFullYear(), lastHourTime.getUTCMonth(), lastHourTime.getUTCDate()))
+                : new Date(lastHourTime.getFullYear(), lastHourTime.getMonth(), lastHourTime.getDate());
+            
+            // Second day badge - spans from day change to end
+            badges.push({
+                date: secondDayDate,
+                startLeft: dayChangeHour * PIXELS_PER_HOUR,
+                endLeft: 24 * PIXELS_PER_HOUR
+            });
+        }
+        
+        return badges;
+    }, [displayDayStart, timeMode]);
+
     const timeMarkers = useMemo(() => {
         const markers = [];
         
@@ -890,27 +974,15 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
 
         // displayDayStart is already converted to the correct timezone (UTC-2 for game time, local for local time)
         const baseTime = new Date(displayDayStart);
-        // Get initial date in the correct timezone
-        let previousDate = timeMode === 'game' 
-            ? baseTime.getUTCDate() 
-            : baseTime.getDate();
 
         for (let i = 0; i < 96; i++) { // 96 intervals of 15 minutes in 24 hours
             const intervalType = i % 4; // 0 for hour, 1 for :15, 2 for :30, 3 for :45
             const displayTime = new Date(baseTime.getTime() + i * 15 * 60 * 1000);
-            // Get current date in the correct timezone
-            const currentDate = timeMode === 'game' 
-                ? displayTime.getUTCDate() 
-                : displayTime.getDate();
-            const isMidnight = intervalType === 0 && currentDate !== previousDate;
-            previousDate = currentDate;
 
             let label = '';
             let labelSuffix = ''; // For AM/PM in 12h format
             let height = 'h-1';
             let labelClass = 'text-[9px]';
-            let isMidnightMarker = false;
-            let dateLabel = '';
 
             if (intervalType === 0) { // Hour
                 const fullLabel = displayTime.toLocaleTimeString('en-US', hourFormat);
@@ -926,12 +998,8 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                 } else {
                     label = fullLabel;
                 }
-                height = isMidnight ? 'h-4' : 'h-3';
-                labelClass = isMidnight ? 'text-sm font-semibold' : 'text-xs';
-                isMidnightMarker = isMidnight;
-                if (isMidnight) {
-                    dateLabel = displayTime.toLocaleDateString('en-US', dateFormat);
-                }
+                height = 'h-3';
+                labelClass = 'text-xs';
             } else if (intervalType === 2) { // Half-hour
                 label = `:${displayTime.toLocaleTimeString('en-US', minuteFormat)}`;
                 height = 'h-2';
@@ -947,8 +1015,6 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                 height,
                 labelClass,
                 left: i * 15 * PIXELS_PER_MINUTE,
-                isMidnight: isMidnightMarker,
-                dateLabel,
             });
         }
         return markers;
@@ -980,31 +1046,63 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
     return (
             <Card className="p-3 space-y-3 w-full">
                  <div className="flex justify-between items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={() => changeDay(-1)}>
+                    <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={() => changeDay(-1)}
+                        disabled={(() => {
+                            const launchDate = new Date(GAME_LAUNCH_DATE);
+                            launchDate.setUTCHours(0, 0, 0, 0);
+                            const selectedDateNormalized = new Date(selectedGameDate);
+                            selectedDateNormalized.setUTCHours(0, 0, 0, 0);
+                            return selectedDateNormalized.getTime() <= launchDate.getTime();
+                        })()}
+                    >
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <div className="flex-1 flex flex-col items-center gap-2">
-                    <h3 className="text-lg font-semibold text-center">
-                        <div className="flex flex-col items-center">
-                            <div>
-                                Game Day #{gameDayNumbers[0]}: {gameDayCalendarDates.start.toLocaleDateString('en-US', { 
-                            weekday: 'long',
-                            timeZone: timeMode === 'game' ? 'UTC' : undefined,
-                            year: 'numeric', month: 'long', day: 'numeric' 
-                                })}
-                            </div>
-                            {gameDayCalendarDates.spansTwoDays && gameDayCalendarDates.end && (
-                                <div className="text-sm text-muted-foreground font-normal">
-                                    and {gameDayCalendarDates.end.toLocaleDateString('en-US', { 
+                        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                            <PopoverTrigger asChild>
+                                <h3 className="text-lg font-semibold text-center cursor-pointer hover:text-accent transition-colors">
+                                    <div className="flex flex-col items-center">
+                                        <div>
+                                            Game Day #{gameDayNumbers[0]}: {gameDayCalendarDates.start.toLocaleDateString('en-US', { 
                                         weekday: 'long',
                                         timeZone: timeMode === 'game' ? 'UTC' : undefined,
                                         year: 'numeric', month: 'long', day: 'numeric' 
-                                    })} 
-                                    ({timeMode === 'game' ? ' Game Time' : ' Your Time'})
-                                </div>
-                            )}
-                        </div>
-                    </h3>
+                                            })}
+                                        </div>
+                                        { gameDayCalendarDates.spansTwoDays && gameDayCalendarDates.end && (
+                                            <div className="text-sm text-muted-foreground font-normal">
+                                                and {gameDayCalendarDates.end.toLocaleDateString('en-US', { 
+                                                    weekday: 'long',
+                                                    timeZone: timeMode === 'game' ? 'UTC' : undefined,
+                                                    year: 'numeric', month: 'long', day: 'numeric' 
+                                                })} 
+                                            </div>
+                                        )}
+                                        <div className="text-sm text-muted-foreground font-normal">
+                                            ({timeMode === 'game' ? 'Game Time' : 'Your Time'})
+                                        </div>
+                                    </div>
+                                </h3>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="center">
+                                <Calendar
+                                    mode="single"
+                                    selected={selectedGameDate}
+                                    onSelect={handleCalendarDateSelect}
+                                    disabled={(date) => {
+                                        const launchDate = new Date(GAME_LAUNCH_DATE);
+                                        launchDate.setUTCHours(0, 0, 0, 0);
+                                        const dateNormalized = new Date(date);
+                                        dateNormalized.setUTCHours(0, 0, 0, 0);
+                                        return dateNormalized.getTime() < launchDate.getTime();
+                                    }}
+                                    initialFocus
+                                />
+                            </PopoverContent>
+                        </Popover>
                     </div>
                     {completionsMounted && (
                         <Button 
@@ -1023,9 +1121,35 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                 </div>
 
                 <div ref={timelineContainerRef} className="w-full overflow-x-auto pb-3 relative">
-                    <div className="flex sticky top-0 bg-card z-30 pt-5">
+                    <div className="flex sticky top-0 bg-card z-30 pt-8">
                         <div className="relative flex-1" style={{ minWidth: `${TOTAL_WIDTH}px` }}>
-                            {timeMarkers.map(({intervalType, label, labelSuffix, left, height, labelClass, isMidnight, dateLabel}, index) => (
+                            {/* Day badges - shown above the hours */}
+                            <div className="absolute -top-7 left-0 right-0 h-5">
+                                {dayBadges.map((badge, index) => {
+                                    const dateStr = badge.date.toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        timeZone: timeMode === 'game' ? 'UTC' : undefined
+                                    });
+                                    return (
+                                        <div
+                                            key={index}
+                                            className="absolute top-0 h-full flex items-center"
+                                            style={{
+                                                left: `${badge.startLeft}px`,
+                                                width: `${badge.endLeft - badge.startLeft}px`
+                                            }}
+                                        >
+                                            <div className="px-2 py-0.5 rounded-md bg-muted/80 border border-border text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                                                {dateStr}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            
+                            {timeMarkers.map(({intervalType, label, labelSuffix, left, height, labelClass}, index) => (
                                 <div
                                     key={index}
                                     className="absolute top-0 -translate-x-1/2 h-full"
@@ -1034,13 +1158,9 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                                     <div className={cn(
                                         "w-0.5 bg-border", 
                                         height, 
-                                        intervalType > 0 && !isMidnight && "opacity-50",
-                                        isMidnight && "bg-accent w-0.5"
+                                        intervalType > 0 && "opacity-50"
                                     )} />
-                                    <div className={cn("absolute top-2 whitespace-nowrap flex flex-col items-center", isMidnight ? "text-accent font-semibold" : "text-muted-foreground")}>
-                                        {isMidnight && dateLabel && (
-                                            <span className={cn("text-xs font-bold mb-0.5", labelClass)}>{dateLabel}</span>
-                                        )}
+                                    <div className={cn("absolute top-2 whitespace-nowrap flex flex-col items-center text-muted-foreground")}>
                                         <span className={cn(labelClass)}>
                                         {label}
                                             {labelSuffix && <span className="text-[8px]">{labelSuffix}</span>}
