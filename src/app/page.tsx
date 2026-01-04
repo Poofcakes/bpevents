@@ -180,7 +180,7 @@ export default function Home() {
             <CalendarDays className="h-7 w-7" />
             This Week's Schedule
           </h2>
-          <WeeklyTimeline timeMode={timeMode} selectedTimezone={selectedTimezone} />
+          <WeeklyTimeline timeMode={timeMode} timeFormat={timeFormat} selectedTimezone={selectedTimezone} />
         </div>
         <div>
           <h2 className="text-3xl font-bold mb-6 font-headline gradient-text drop-shadow-lg flex items-center gap-2">
@@ -325,7 +325,7 @@ export default function Home() {
       </main>
       <footer className="text-center py-4 text-muted-foreground text-sm border-t space-y-2">
         <p>BP:SR Event Tracker | Blue Protocol: Star Resonance</p>
-        <p>Last Updated: 03.01.2026</p>
+        <p>Last Updated: 04.01.2026</p>
         <div className="flex items-center justify-center gap-4 pt-2">
           <a
             href="https://ko-fi.com/poofcakes"

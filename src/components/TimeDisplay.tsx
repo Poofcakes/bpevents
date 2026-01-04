@@ -53,7 +53,29 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat, selecte
         }
         try {
         if (typeof Intl.supportedValuesOf === 'function') {
-            setTimezones(Intl.supportedValuesOf('timeZone'));
+            const standardTimezones = Intl.supportedValuesOf('timeZone');
+            // Add Etc/GMT timezones (UTC-12 to UTC+14)
+            // Note: IANA uses inverted signs for Etc/GMT timezones:
+            // Etc/GMT+2 means UTC-2 (2 hours behind UTC)
+            // Etc/GMT-2 means UTC+2 (2 hours ahead of UTC)
+            const etcTimezones: string[] = [];
+            for (let i = -12; i <= 14; i++) {
+                // For UTC offset i, IANA uses the opposite sign
+                // UTC-2 -> Etc/GMT+2, UTC+2 -> Etc/GMT-2
+                const sign = i >= 0 ? '+' : '';
+                etcTimezones.push(`Etc/GMT${sign}${i}`);
+            }
+            // Combine and sort: Etc timezones first, then standard timezones
+            const allTimezones = [...etcTimezones, ...standardTimezones].sort((a, b) => {
+                // Sort Etc timezones first
+                const aIsEtc = a.startsWith('Etc/');
+                const bIsEtc = b.startsWith('Etc/');
+                if (aIsEtc && !bIsEtc) return -1;
+                if (!aIsEtc && bIsEtc) return 1;
+                // Within each group, sort alphabetically
+                return a.localeCompare(b);
+            });
+            setTimezones(allTimezones);
         }
         } catch (e) {
         console.error("Timezones not supported", e);
@@ -318,7 +340,21 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat, selecte
               variant="outline"
               className="h-8 sm:h-10 text-xs sm:text-sm px-2 sm:px-3 max-w-[80px] sm:max-w-[120px] md:max-w-[150px] justify-between truncate"
             >
-              <span className="truncate">{selectedTimezone || 'Timezone'}</span>
+              <span className="truncate">
+                {selectedTimezone ? (
+                  selectedTimezone.startsWith('Etc/GMT') ? (() => {
+                    const match = selectedTimezone.match(/Etc\/GMT([+-])(\d+)/);
+                    if (match) {
+                      const sign = match[1];
+                      const num = parseInt(match[2]);
+                      const actualOffset = sign === '+' ? -num : num;
+                      const offsetStr = actualOffset >= 0 ? `+${actualOffset}` : `${actualOffset}`;
+                      return `UTC ${offsetStr}`;
+                    }
+                    return selectedTimezone;
+                  })() : selectedTimezone.replace(/_/g, ' ')
+                ) : 'Timezone'}
+              </span>
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-[300px] sm:w-[350px] p-0" align="start">
@@ -333,28 +369,63 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat, selecte
             </div>
             <div className="max-h-[300px] overflow-auto">
               {timezones
-                .filter((tz) =>
-                  tz.toLowerCase().includes(timezoneSearch.toLowerCase())
-                )
-                .map((tz) => (
-                  <button
-                    key={tz}
-                    onClick={() => {
-                      setSelectedTimezone(tz);
-                      setIsTimezoneOpen(false);
-                      setTimezoneSearch('');
-                    }}
-                    className={cn(
-                      "w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer",
-                      selectedTimezone === tz && "bg-accent text-accent-foreground"
-                    )}
-                  >
-                    <span>{tz}</span>
-                    {selectedTimezone === tz && (
-                      <Check className="h-4 w-4" />
-                    )}
-                  </button>
-                ))}
+                .filter((tz) => {
+                  const searchLower = timezoneSearch.toLowerCase();
+                  const tzLower = tz.toLowerCase();
+                  // Search in both the original timezone ID and the display name (with spaces)
+                  const displayName = tz.startsWith('Etc/GMT') 
+                    ? (() => {
+                        const match = tz.match(/Etc\/GMT([+-])(\d+)/);
+                        if (match) {
+                          const sign = match[1];
+                          const num = parseInt(match[2]);
+                          const actualOffset = sign === '+' ? -num : num;
+                          const offsetStr = actualOffset >= 0 ? `+${actualOffset}` : `${actualOffset}`;
+                          return `UTC ${offsetStr}`;
+                        }
+                        return tz;
+                      })()
+                    : tz.replace(/_/g, ' ');
+                  return tzLower.includes(searchLower) || displayName.toLowerCase().includes(searchLower);
+                })
+                .map((tz) => {
+                  // For Etc/GMT timezones, show as "UTC +X" or "UTC -X"
+                  // IANA uses inverted signs: Etc/GMT+2 means UTC-2
+                  let displayName = tz;
+                  if (tz.startsWith('Etc/GMT')) {
+                    const match = tz.match(/Etc\/GMT([+-])(\d+)/);
+                    if (match) {
+                      const sign = match[1];
+                      const num = parseInt(match[2]);
+                      // IANA uses inverted signs, so invert for display
+                      const actualOffset = sign === '+' ? -num : num;
+                      const offsetStr = actualOffset >= 0 ? `+${actualOffset}` : `${actualOffset}`;
+                      displayName = `UTC ${offsetStr}`;
+                    }
+                  } else {
+                    // Replace underscores with spaces for readability
+                    displayName = tz.replace(/_/g, ' ');
+                  }
+                  return (
+                    <button
+                      key={tz}
+                      onClick={() => {
+                        setSelectedTimezone(tz);
+                        setIsTimezoneOpen(false);
+                        setTimezoneSearch('');
+                      }}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer",
+                        selectedTimezone === tz && "bg-accent text-accent-foreground"
+                      )}
+                    >
+                      <span>{displayName}</span>
+                      {selectedTimezone === tz && (
+                        <Check className="h-4 w-4" />
+                      )}
+                    </button>
+                  );
+                })}
             </div>
           </PopoverContent>
         </Popover>

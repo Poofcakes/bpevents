@@ -4,7 +4,7 @@ export interface GameEvent {
   name: string;
   type: 'World Boss' | 'Special Event' | 'Leisure Activity' | 'Unlock';
   category: 'Boss' | 'World Boss Crusade' | 'Buff' | 'Social' | 'Mini-game' | 'Patrol' | 'Guild' | 'Event' | 'Hunting' | 'Dungeon Unlock' | 'Raid Unlock' | 'Roguelike';
-  seasonalCategory?: 'Silverstar Carnival' | 'Halloween' | 'Kanamia Harvest Festival' | 'Winter Fest' | 'Season 2 Warmup';
+  seasonalCategory?: 'Silverstar Carnival' | 'Halloween' | 'Kanamia Harvest Festival' | 'Winter Fest' | 'Season 2 Warmup' | 'Season 1' | 'Season 2';
   description: string;
   schedule: Schedule;
   durationMinutes?: number;
@@ -334,9 +334,9 @@ export const events: GameEvent[] = [
     schedule: { 
       type: 'daily-intervals',
       intervals: [
+        { start: { hour: 0, minute: 0 }, end: { hour: 5, minute: 0 } },
         { start: { hour: 12, minute: 0 }, end: { hour: 17, minute: 0 } },
         { start: { hour: 18, minute: 0 }, end: { hour: 23, minute: 0 } },
-        { start: { hour: 0, minute: 0 }, end: { hour: 5, minute: 0 } },
       ],
     },
     dateRange: {
@@ -390,7 +390,7 @@ export const events: GameEvent[] = [
     },
     dateRange: {
       start: '2025-12-18',
-      end: '2026-01-05'
+      end: '2026-01-04'
     }
   },
   {
@@ -735,7 +735,6 @@ export const events: GameEvent[] = [
       added: '2025-12-08',
     }
   },
-  // Future event
   {
     name: 'Prelude of Crimson',
     type: 'Special Event',
@@ -748,15 +747,29 @@ export const events: GameEvent[] = [
       end: '2026-01-15'
     }
   },
+  // Season runtime events
   {
-    name: 'Season 2 Start',
+    name: 'Season 1',
     type: 'Special Event',
     category: 'Event',
-    description: 'Season 2 officially begins.',
+    seasonalCategory: 'Season 1',
+    description: 'Season 1 of Blue Protocol: Star Resonance.',
+    schedule: { type: 'none' },
+    dateRange: {
+      start: '2025-10-09',
+      end: '2026-01-15'
+    }
+  },
+  {
+    name: 'Season 2',
+    type: 'Special Event',
+    category: 'Event',
+    seasonalCategory: 'Season 2',
+    description: 'Season 2 of Blue Protocol: Star Resonance. Unknown when it ends exactly.',
     schedule: { type: 'none' },
     dateRange: {
       start: '2026-01-15',
-      end: '2026-01-15'
+      end: '2026-03-31'
     }
   },
 ];

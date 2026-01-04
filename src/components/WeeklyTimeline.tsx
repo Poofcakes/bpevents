@@ -295,6 +295,7 @@ const WeeklyHourEventBar = memo(({
                     <div 
                         onClick={(e) => e.stopPropagation()}
                         onMouseDown={(e) => e.stopPropagation()}
+                        className="flex items-center"
                         style={{ pointerEvents: 'auto', position: 'relative', zIndex: 10 }}
                     >
                         <Checkbox
@@ -506,6 +507,8 @@ const SeasonalCategoryIcons: Record<NonNullable<GameEvent['seasonalCategory']>, 
     'Winter Fest': Gift,
     'Silverstar Carnival': CalendarHeart,
     'Season 2 Warmup': Star,
+    'Season 1': Star,
+    'Season 2': Star,
 };
 
 const SeasonalCategoryColors: Record<NonNullable<GameEvent['seasonalCategory']>, {bg: string, border: string}> = {
@@ -514,6 +517,8 @@ const SeasonalCategoryColors: Record<NonNullable<GameEvent['seasonalCategory']>,
     'Winter Fest': { bg: 'bg-red-500/80', border: 'border-red-500' },
     'Silverstar Carnival': { bg: 'bg-blue-400/80', border: 'border-blue-400' },
     'Season 2 Warmup': { bg: 'bg-purple-400/80', border: 'border-purple-400' },
+    'Season 1': { bg: 'bg-blue-500/80', border: 'border-blue-500' },
+    'Season 2': { bg: 'bg-purple-500/80', border: 'border-purple-500' },
 };
 
 
@@ -548,7 +553,7 @@ const isDailyEvent = (event: GameEvent) => {
     return false;
 }
 
-const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek }: { event: GameEvent, isCompleted: boolean | undefined, onToggleCompletion: () => void, isCurrentWeek: boolean }) => {
+const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek, timeFormat }: { event: GameEvent, isCompleted: boolean | undefined, onToggleCompletion: () => void, isCurrentWeek: boolean, timeFormat: TimeFormat }) => {
     const [mounted, setMounted] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
@@ -642,7 +647,7 @@ const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek }: 
             d.setUTCHours(t.hour + 2, t.minute); // Convert UTC-2 to UTC
             // Format as UTC to show game time (subtract 2 hours by formatting the UTC-2 equivalent)
             const gameTime = new Date(d.getTime() - (2 * 60 * 60 * 1000)); // Subtract 2 hours to show UTC-2
-            return gameTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+            return gameTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' });
         }))];
         timeSummary = uniqueTimes.slice(0, 2).join(', ') + (uniqueTimes.length > 2 ? '...' : '');
     } else if (schedule.type === 'multi-hourly') {
@@ -657,7 +662,7 @@ const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek }: 
             d.setUTCHours(t.start.hour + 2, t.start.minute); // Convert UTC-2 to UTC
             // Format as UTC to show game time (subtract 2 hours by formatting the UTC-2 equivalent)
             const gameTime = new Date(d.getTime() - (2 * 60 * 60 * 1000)); // Subtract 2 hours to show UTC-2
-            return gameTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+            return gameTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' });
         }))];
         timeSummary = uniqueTimes.slice(0, 2).join(', ') + (uniqueTimes.length > 2 ? '...' : '');
     }
@@ -679,7 +684,7 @@ const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek }: 
                     setMousePos(null);
                 }}
             >
-                <div className="w-3 flex-shrink-0">
+                <div className="w-3 flex-shrink-0 flex items-center">
                     {isCurrentWeek && (
                         <Checkbox
                             checked={isCompleted}
@@ -719,7 +724,7 @@ const WeeklyEvent = ({ event, isCompleted, onToggleCompletion, isCurrentWeek }: 
     );
 };
 
-const WeeklyEventBar = ({ event, daySpans, weekDates, calendarWeekStart, isCompleted, onToggleCompletion, isCurrentWeek }: { event: GameEvent; daySpans: number[]; weekDates: Date[]; calendarWeekStart: Date; isCompleted: boolean | undefined; onToggleCompletion: () => void; isCurrentWeek: boolean }) => {
+const WeeklyEventBar = ({ event, daySpans, weekDates, calendarWeekStart, isCompleted, onToggleCompletion, isCurrentWeek, timeFormat }: { event: GameEvent; daySpans: number[]; weekDates: Date[]; calendarWeekStart: Date; isCompleted: boolean | undefined; onToggleCompletion: () => void; isCurrentWeek: boolean; timeFormat: TimeFormat }) => {
     const [mounted, setMounted] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
@@ -850,7 +855,7 @@ const WeeklyEventBar = ({ event, daySpans, weekDates, calendarWeekStart, isCompl
             // Format as UTC to show game time (subtract 2 hours by formatting the UTC-2 equivalent)
             const startGameTime = new Date(startUTC.getTime() - (2 * 60 * 60 * 1000));
             const endGameTime = new Date(endUTC.getTime() - (2 * 60 * 60 * 1000));
-            const formatOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' };
+            const formatOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: timeFormat === '12h' };
             return `${startGameTime.toLocaleTimeString('en-US', formatOptions)} - ${endGameTime.toLocaleTimeString('en-US', formatOptions)}`;
         }).join(', ');
     } else if (schedule.type === 'daily-specific') {
@@ -861,7 +866,7 @@ const WeeklyEventBar = ({ event, daySpans, weekDates, calendarWeekStart, isCompl
             d.setUTCHours(t.hour + 2, t.minute); // Convert UTC-2 to UTC
             // Format as UTC to show game time (subtract 2 hours by formatting the UTC-2 equivalent)
             const gameTime = new Date(d.getTime() - (2 * 60 * 60 * 1000)); // Subtract 2 hours to show UTC-2
-            return gameTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+            return gameTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' });
         }))];
         timeSummary = uniqueTimes.join(', ');
     } else if (isDailyEvent(event)) {
@@ -1304,6 +1309,12 @@ export default function WeeklyTimeline({ timeMode = 'game', timeFormat = '24h', 
                                 }
                             }
                             
+                            // Calculate range end date for filtering intervals that start after the event ends
+                            const rangeEndDate = eventRange && eventRange.end ? new Date(eventRange.end + 'T00:00:00Z') : null;
+                            if (rangeEndDate) {
+                                rangeEndDate.setUTCHours(23, 59, 59, 999); // End of the end date
+                            }
+                            
                             for (let i = 0; i < intervals.length; i++) {
                                 const interval = intervals[i];
                                 const isEarlyMorningInterval = i >= earlyMorningStartIndex;
@@ -1330,6 +1341,11 @@ export default function WeeklyTimeline({ timeMode = 'game', timeFormat = '24h', 
                                         intervalEnd.setUTCDate(intervalEnd.getUTCDate() + 1);
                                     }
                                     
+                                    // Check if interval starts after the event end date - if so, exclude it
+                                    if (rangeEndDate && intervalStart > rangeEndDate) {
+                                        continue; // Skip this interval
+                                    }
+                                    
                                     // Include if end is within this game day (before 7 AM UTC next day = dayEndBoundary)
                                     if (intervalEnd <= dayEndBoundary && intervalEnd > dayStart) {
                                         intervalsInGameDay.push({ 
@@ -1348,6 +1364,11 @@ export default function WeeklyTimeline({ timeMode = 'game', timeFormat = '24h', 
                                         intervalEnd.setUTCDate(intervalEnd.getUTCDate() + 1);
                                     }
                                     
+                                    // Check if interval starts after the event end date - if so, exclude it
+                                    if (rangeEndDate && intervalStart > rangeEndDate) {
+                                        continue; // Skip this interval
+                                    }
+                                    
                                     // Include if start is within this game day
                                     if (intervalStart >= dayStart && intervalStart < dayEndBoundary) {
                                         intervalsInGameDay.push({ 
@@ -1362,6 +1383,19 @@ export default function WeeklyTimeline({ timeMode = 'game', timeFormat = '24h', 
                                 // Use first interval start and last interval end within this game day
                                 dayOccurrenceStart = intervalsInGameDay[0].start;
                                 dayOccurrenceEnd = intervalsInGameDay[intervalsInGameDay.length - 1].end;
+                                
+                                // For events with date ranges, verify the occurrence falls within the range
+                                // Check if any interval extends beyond the end date (rangeEndDate already calculated above)
+                                if (rangeEndDate) {
+                                    // If the occurrence starts after the end date, exclude it
+                                    if (dayOccurrenceStart > rangeEndDate) {
+                                        return;
+                                    }
+                                    // Clip end time to the end date if it extends beyond
+                                    if (dayOccurrenceEnd > rangeEndDate) {
+                                        dayOccurrenceEnd = new Date(rangeEndDate);
+                                    }
+                                }
                             } else {
                                 // No intervals in this game day, skip
                                 return;
@@ -1371,12 +1405,12 @@ export default function WeeklyTimeline({ timeMode = 'game', timeFormat = '24h', 
                         }
                     } else {
                         // For other schedule types, use the existing functions
-                        dayOccurrenceStart = getEventStartTime(event, dateStrForEvent);
-                        dayOccurrenceEnd = getEventEndTime(event, dateStrForEvent);
-                        
-                        // Handle midnight crossover
-                        if (dayOccurrenceEnd < dayOccurrenceStart) {
-                            dayOccurrenceEnd.setUTCDate(dayOccurrenceEnd.getUTCDate() + 1);
+                    dayOccurrenceStart = getEventStartTime(event, dateStrForEvent);
+                    dayOccurrenceEnd = getEventEndTime(event, dateStrForEvent);
+                    
+                    // Handle midnight crossover
+                    if (dayOccurrenceEnd < dayOccurrenceStart) {
+                        dayOccurrenceEnd.setUTCDate(dayOccurrenceEnd.getUTCDate() + 1);
                         }
                         
                         // Game day boundaries: 7 AM UTC to 7 AM UTC next day
@@ -1504,16 +1538,19 @@ export default function WeeklyTimeline({ timeMode = 'game', timeFormat = '24h', 
             }
         }
         
-        // Now combine segments that have the same date AND are in the same game day
+        // Now combine segments that have the same calendar date across game days (reset lines)
         const badgesMap = new Map<string, { date: Date; startPercent: number; endPercent: number }>();
         
         dateSegments.forEach(segment => {
-            // Create a key from the date (year-month-day) AND game day index - always use UTC methods for consistency
-            // This ensures badges only merge within the same game day, not across game days
-            const dateKey = `${segment.dayIndex}-${segment.date.getUTCFullYear()}-${segment.date.getUTCMonth()}-${segment.date.getUTCDate()}`;
+            // Create a key from the date (year-month-day) only - use the UTC date components directly
+            // This ensures badges merge across game days when the same calendar date appears on both sides of a reset line
+            const year = segment.date.getUTCFullYear();
+            const month = segment.date.getUTCMonth();
+            const day = segment.date.getUTCDate();
+            const dateKey = `${year}-${month}-${day}`;
             
             if (badgesMap.has(dateKey)) {
-                // Merge with existing badge - extend the range (within the same game day)
+                // Merge with existing badge - extend the range across reset lines
                 const existing = badgesMap.get(dateKey)!;
                 existing.startPercent = Math.min(existing.startPercent, segment.startPercent);
                 existing.endPercent = Math.max(existing.endPercent, segment.endPercent);
@@ -1803,6 +1840,7 @@ export default function WeeklyTimeline({ timeMode = 'game', timeFormat = '24h', 
                                         toggleWeeklyEventCompletion(event.name, weekDates[dayIndex]);
                                     }}
                                     isCurrentWeek={true}
+                                    timeFormat={timeFormat}
                                 />
                             );
                         })}

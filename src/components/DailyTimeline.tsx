@@ -164,11 +164,28 @@ const getDayOccurrences = (event: GameEvent, dayDate: Date): {start: Date, end?:
         }
     }
     
-    // Filter occurrences to be within the day window
-    const uniqueOccurrences = occurrences.filter((occ, index, self) => 
-        occ.start >= dayStart && occ.start < dayEnd &&
-        index === self.findIndex(o => o.start.getTime() === occ.start.getTime())
-    );
+    // Filter occurrences to be within the day window and within the event's date range
+    const uniqueOccurrences = occurrences.filter((occ, index, self) => {
+        // First check: must be within the day window
+        if (!(occ.start >= dayStart && occ.start < dayEnd)) {
+            return false;
+        }
+        
+        // Second check: must be within the event's date range (for events with dateRanges/dateRange)
+        if (event.dateRanges || event.dateRange) {
+            // Get the calendar date of the occurrence start time
+            const occurrenceCalendarDate = new Date(occ.start);
+            occurrenceCalendarDate.setUTCHours(0, 0, 0, 0);
+            
+            // Use checkDateInRange to verify the occurrence date is in range
+            if (!checkDateInRange(event, occurrenceCalendarDate)) {
+                return false;
+            }
+        }
+        
+        // Third check: deduplicate
+        return index === self.findIndex(o => o.start.getTime() === occ.start.getTime());
+    });
 
     return uniqueOccurrences;
 }
@@ -216,6 +233,8 @@ const SeasonalCategoryIcons: Record<NonNullable<GameEvent['seasonalCategory']>, 
     'Winter Fest': Gift,
     'Silverstar Carnival': CalendarHeart,
     'Season 2 Warmup': Star,
+    'Season 1': Star,
+    'Season 2': Star,
 };
 
 
@@ -546,6 +565,11 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
             EventIcon = Lock;
         }
         
+        // For boarlets, move the badge left to account for the icon (similar to other events)
+        // Icon is 12px (h-3 w-3) + gap-2 (8px) = 20px total, so shift left by 10px
+        const isBoarlet = event.name === 'Lovely Boarlet' || event.name === 'Breezy Boarlet';
+        const iconOffset = isBoarlet ? -10 : 0;
+        
         return (
             <>
             <div
@@ -560,9 +584,20 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
                         setMousePos(null);
                     }}
             >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" style={isBoarlet ? { transform: `translateX(${iconOffset}px)` } : undefined}>
                     <EventIcon className="h-3 w-3 flex-shrink-0" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
-                    <div className={cn("text-xs font-bold whitespace-nowrap px-2 py-0.5 rounded-full border", colorClass, isPast ? 'opacity-50' : '')} style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined}>
+                    <div 
+                        className={cn("text-xs font-bold whitespace-nowrap px-2 py-0.5 rounded-full border cursor-pointer", colorClass, isPast ? 'opacity-50' : '')} 
+                        style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined}
+                        onMouseEnter={(e) => {
+                            setIsHovered(true);
+                            setMousePos({ x: e.clientX, y: e.clientY });
+                        }}
+                        onMouseLeave={() => {
+                            setIsHovered(false);
+                            setMousePos(null);
+                        }}
+                    >
                         {event.name}
                     </div>
                     {event.seasonalCategory && (() => {
@@ -1277,6 +1312,7 @@ export default function DailyTimeline({ timeMode, timeFormat, selectedTimezone }
                                                 // Toggle daily completion
                                                 toggleDailyEventCompletion(event.name, selectedGameDate, occurrenceKey);
                                             }}
+                                            selectedTimezone={selectedTimezone}
                                         />
                                     ))}
                                 </div>
