@@ -8,11 +8,13 @@ interface HeaderProps {
     setTimeMode: (mode: TimeDisplayMode) => void;
     timeFormat: TimeFormat;
     setTimeFormat: (format: TimeFormat) => void;
+    selectedTimezone: string;
+    setSelectedTimezone: (tz: string) => void;
 }
 
-export default function Header({ timeMode, setTimeMode, timeFormat, setTimeFormat }: HeaderProps) {
+export default function Header({ timeMode, setTimeMode, timeFormat, setTimeFormat, selectedTimezone, setSelectedTimezone }: HeaderProps) {
   return (
-    <header className="bg-card/50 backdrop-blur-sm border-b border-border sticky top-0 z-50">
+    <header className="bg-card/50 backdrop-blur-sm border-b border-border sticky top-0 z-[100]">
       <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-4 flex flex-wrap justify-between items-center gap-2 sm:gap-4">
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="relative bounce-gentle">
@@ -35,6 +37,8 @@ export default function Header({ timeMode, setTimeMode, timeFormat, setTimeForma
           setTimeMode={setTimeMode}
           timeFormat={timeFormat}
           setTimeFormat={setTimeFormat}
+          selectedTimezone={selectedTimezone}
+          setSelectedTimezone={setSelectedTimezone}
         />
       </div>
     </header>

@@ -29,16 +29,32 @@ export const getGameTime = (date: Date): Date => {
 
 // Determines the "Game Day" date based on the 5AM UTC-2 reset time.
 export const getGameDate = (date: Date): Date => {
-    const gameNow = getGameTime(date);
-    const resetHourInGameTime = 5; // 5 AM UTC-2
+    // Get the UTC time of the input date
+    const utcDate = new Date(Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+        date.getUTCHours(),
+        date.getUTCMinutes(),
+        date.getUTCSeconds(),
+        date.getUTCMilliseconds()
+    ));
     
-    // If the time is before 5 AM game time, it's still considered the previous game day.
-    if (gameNow.getUTCHours() < resetHourInGameTime) {
-        const prevDay = new Date(gameNow);
+    // Game day resets at 5 AM UTC-2, which is 7 AM UTC
+    const resetHourUTC = 7; // 7 AM UTC = 5 AM UTC-2
+    
+    // If the time is before 7 AM UTC (5 AM game time), it's still considered the previous game day.
+    if (utcDate.getUTCHours() < resetHourUTC) {
+        const prevDay = new Date(utcDate);
         prevDay.setUTCDate(prevDay.getUTCDate() - 1);
+        // Return the date at midnight UTC for the previous day
+        prevDay.setUTCHours(0, 0, 0, 0);
         return prevDay;
     }
-    return gameNow;
+    // Return the date at midnight UTC for the current day
+    const currentDay = new Date(utcDate);
+    currentDay.setUTCHours(0, 0, 0, 0);
+    return currentDay;
 }
 
 

@@ -215,17 +215,19 @@ const SeasonalCategoryIcons: Record<NonNullable<GameEvent['seasonalCategory']>, 
     'Halloween': Ghost,
     'Winter Fest': Gift,
     'Silverstar Carnival': CalendarHeart,
+    'Season 2 Warmup': Star,
 };
 
 
 // Memoized tooltip content to avoid rerenders - but includes live time info
-const EventTooltipContent = memo(({ event, occurrence, timeMode, timeFormat, isToday, effectiveEndDate }: { 
+const EventTooltipContent = memo(({ event, occurrence, timeMode, timeFormat, isToday, effectiveEndDate, selectedTimezone }: { 
     event: GameEvent; 
     occurrence: {start: Date, end?: Date}; 
     timeMode: TimeDisplayMode; 
     timeFormat: TimeFormat;
     isToday: boolean;
     effectiveEndDate: Date;
+    selectedTimezone?: string;
 }) => {
     const [now, setNow] = useState<Date | null>(null);
     
@@ -241,44 +243,24 @@ const EventTooltipContent = memo(({ event, occurrence, timeMode, timeFormat, isT
     
     const dateFormat = 'MMM d, yyyy';
     
-    // For game time mode: display in UTC-2 (subtract 2 hours from UTC)
-    // For local time mode: display in user's local timezone
-    let displayStart: Date;
-    let displayEnd: Date | null;
-    let displayEffectiveEnd: Date;
-    
-    if (timeMode === 'game') {
-        // Convert UTC to UTC-2 by subtracting 2 hours
-        displayStart = new Date(occurrence.start.getTime() - (2 * 60 * 60 * 1000));
-        displayEnd = occurrence.end ? new Date(occurrence.end.getTime() - (2 * 60 * 60 * 1000)) : null;
-        displayEffectiveEnd = new Date(effectiveEndDate.getTime() - (2 * 60 * 60 * 1000));
-    } else {
-        // Local time mode: occurrence.start is stored in UTC, browser will display in local timezone
-        displayStart = new Date(occurrence.start);
-        displayEnd = occurrence.end ? new Date(occurrence.end) : null;
-        displayEffectiveEnd = new Date(effectiveEndDate);
-    }
+    // Always use selectedTimezone for formatting
+    // When game time is on, selectedTimezone is 'Etc/GMT+2' (UTC-2)
+    // When local time is on, selectedTimezone is the user's selected timezone
+    // If selectedTimezone is not provided, fall back to system timezone
+    const tz = selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     
     const timeOptions: Intl.DateTimeFormatOptions = {
         hour: '2-digit',
         minute: '2-digit',
         hour12: timeFormat === '12h',
-        timeZone: timeMode === 'game' ? 'UTC' : undefined
+        timeZone: tz
     };
     
-    // For game time mode, we need to display the UTC hours directly (since we've already subtracted 2 hours)
-    // For local time mode, browser handles the conversion
-    let startTimeStr: string;
-    let endTimeStr: string | null = null;
-    
-    if (timeMode === 'game') {
-        // displayStart already has 2 hours subtracted, so we format it as UTC to show the UTC hours directly
-        startTimeStr = displayStart.toLocaleTimeString('en-US', timeOptions);
-        endTimeStr = displayEnd ? displayEnd.toLocaleTimeString('en-US', timeOptions) : null;
-    } else {
-        startTimeStr = displayStart.toLocaleTimeString([], timeOptions);
-        endTimeStr = displayEnd ? displayEnd.toLocaleTimeString([], timeOptions) : null;
-    }
+    // Format times directly using the occurrence dates with the selected timezone
+    // occurrence.start and occurrence.end are stored in UTC
+    // The timezone conversion is handled by toLocaleTimeString
+    const startTimeStr = occurrence.start.toLocaleTimeString('en-US', timeOptions);
+    const endTimeStr = occurrence.end ? occurrence.end.toLocaleTimeString('en-US', timeOptions) : null;
     
     // Check if this is an instant event (like boarlets - no duration)
     const isInstantEvent = !event.durationMinutes && (!occurrence.end || occurrence.end.getTime() === occurrence.start.getTime());
@@ -368,7 +350,7 @@ const EventTooltipContent = memo(({ event, occurrence, timeMode, timeFormat, isT
 });
 EventTooltipContent.displayName = 'EventTooltipContent';
 
-const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, gameDayStart, isCompleted, onToggleCompletion }: { event: GameEvent, occurrence: {start: Date, end?: Date}, timeMode: TimeDisplayMode, timeFormat: TimeFormat, isToday: boolean, gameDayStart: Date, isCompleted: boolean, onToggleCompletion: () => void }) => {
+const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, gameDayStart, isCompleted, onToggleCompletion, selectedTimezone }: { event: GameEvent, occurrence: {start: Date, end?: Date}, timeMode: TimeDisplayMode, timeFormat: TimeFormat, isToday: boolean, gameDayStart: Date, isCompleted: boolean, onToggleCompletion: () => void, selectedTimezone?: string }) => {
     const [mounted, setMounted] = useState(false);
     
     useEffect(() => {
@@ -579,24 +561,22 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
                     }}
             >
                 <div className="flex items-center gap-2">
+                    <EventIcon className="h-3 w-3 flex-shrink-0" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
                     <div className={cn("text-xs font-bold whitespace-nowrap px-2 py-0.5 rounded-full border", colorClass, isPast ? 'opacity-50' : '')} style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined}>
-                  {event.name}
+                        {event.name}
                     </div>
-                    <div className="flex items-center gap-0.5">
-                        {event.seasonalCategory && (() => {
-                            const SeasonalIcon = SeasonalCategoryIcons[event.seasonalCategory];
-                            return SeasonalIcon ? (
-                                <SeasonalIcon className="h-2.5 w-2.5 flex-shrink-0 opacity-70" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
-                            ) : null;
-                        })()}
-                        <EventIcon className="h-3 w-3 flex-shrink-0" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
-                    </div>
+                    {event.seasonalCategory && (() => {
+                        const SeasonalIcon = SeasonalCategoryIcons[event.seasonalCategory];
+                        return SeasonalIcon ? (
+                            <SeasonalIcon className="h-2.5 w-2.5 flex-shrink-0 opacity-70" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
+                        ) : null;
+                    })()}
                 </div>
                 <div className={cn("w-0.5 grow", isPast ? "bg-muted" : lineColor)} />
             </div>
                 {mounted && isHovered && mousePos && typeof window !== 'undefined' && createPortal(
                     <div ref={tooltipRef} style={tooltipStyle}>
-                        <EventTooltipContent event={event} occurrence={occurrence} timeMode={timeMode} timeFormat={timeFormat} isToday={isToday} effectiveEndDate={effectiveEndDate} />
+                        <EventTooltipContent event={event} occurrence={occurrence} timeMode={timeMode} timeFormat={timeFormat} isToday={isToday} effectiveEndDate={effectiveEndDate} selectedTimezone={selectedTimezone} />
                     </div>,
                     document.body
                 )}
@@ -618,16 +598,16 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
                 setMousePos(null);
             }}
         >
-            <div className="flex items-center gap-2">
-        <div
-            className={cn(
-                        "rounded-md px-2 py-0.5 flex items-center gap-1.5 text-xs font-semibold h-6 border transition-all duration-200 cursor-default", 
-                colorClass,
-                isPast && "opacity-50 bg-card/50",
-                isActive && "ring-2 ring-white shadow-lg shadow-white/20"
-            )}
-                    style={{ width: `${Math.max(width, 0)}px`, ...(isCompleted && { filter: 'saturate(0.3)', opacity: 0.75 }) }}
-                >
+            <Icon className="h-3 w-3 flex-shrink-0 absolute" style={{ left: '-1.25rem', top: '50%', transform: 'translateY(-50%)', ...(isCompleted && { filter: 'saturate(0.3)', opacity: 0.75 }) }} />
+            <div
+                className={cn(
+                    "rounded-md px-2 py-0.5 flex items-center gap-1.5 text-xs font-semibold h-6 border transition-all duration-200 cursor-default", 
+                    colorClass,
+                    isPast && "opacity-50 bg-card/50",
+                    isActive && "ring-2 ring-white shadow-lg shadow-white/20"
+                )}
+                style={{ width: `${Math.max(width, 0)}px`, ...(isCompleted && { filter: 'saturate(0.3)', opacity: 0.75 }) }}
+            >
                     <Checkbox
                         checked={isCompleted}
                         onCheckedChange={(checked) => {
@@ -639,21 +619,17 @@ const TimelineEvent = memo(({ event, occurrence, timeMode, timeFormat, isToday, 
                         className="h-3 w-3 flex-shrink-0"
                     />
                     <span className="truncate whitespace-nowrap">{event.name}</span>
-        </div>
-                <div className="flex items-center gap-1">
                     {event.seasonalCategory && (() => {
                         const SeasonalIcon = SeasonalCategoryIcons[event.seasonalCategory];
                         return SeasonalIcon ? (
-                        <SeasonalIcon className="h-2.5 w-2.5 flex-shrink-0 opacity-70" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
-                    ) : null;
-                })()}
-                    <Icon className="h-3 w-3 flex-shrink-0" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
+                            <SeasonalIcon className="h-2.5 w-2.5 flex-shrink-0 opacity-70 ml-auto" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
+                        ) : null;
+                    })()}
                 </div>
-            </div>
         </div>
             {mounted && isHovered && mousePos && typeof window !== 'undefined' && createPortal(
                 <div ref={tooltipRef} style={tooltipStyle}>
-                    <EventTooltipContent event={event} occurrence={occurrence} timeMode={timeMode} timeFormat={timeFormat} isToday={isToday} effectiveEndDate={effectiveEndDate} />
+                    <EventTooltipContent event={event} occurrence={occurrence} timeMode={timeMode} timeFormat={timeFormat} isToday={isToday} effectiveEndDate={effectiveEndDate} selectedTimezone={selectedTimezone} />
                 </div>,
                 document.body
             )}
@@ -665,14 +641,16 @@ TimelineEvent.displayName = 'TimelineEvent';
 
 const GAME_LAUNCH_DATE = new Date('2025-10-09T05:00:00Z'); // Game launches at reset time on Thursday Oct 9th.
 
-export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: TimeDisplayMode, timeFormat: TimeFormat }) {
+export default function DailyTimeline({ timeMode, timeFormat, selectedTimezone }: { timeMode: TimeDisplayMode, timeFormat: TimeFormat, selectedTimezone?: string }) {
     const { isCategoryEnabled } = useEventPreferences();
-    const { isEventCompleted, toggleEventCompletion, resetDay, mounted: completionsMounted } = useDailyCompletions();
+    const { isEventCompleted: isDailyEventCompleted, toggleEventCompletion: toggleDailyEventCompletion, resetDay, mounted: completionsMounted } = useDailyCompletions();
     const [selectedGameDate, setSelectedGameDate] = useState(() => getGameDate(new Date()));
     const timelineContainerRef = useRef<HTMLDivElement>(null);
     const hasScrolledRef = useRef(false);
     const [now, setNow] = useState<Date | null>(null);
     const [calendarOpen, setCalendarOpen] = useState(false);
+    // Use selectedTimezone if provided, otherwise fall back to browser timezone
+    const timezone = selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     
      useEffect(() => {
         setNow(new Date());
@@ -708,46 +686,58 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
         return [dayNumber];
     }, [selectedGameDate]);
 
-    // For display purposes, convert to the selected time mode
-    // gameDayStart is stored in UTC (representing game time)
+    // For display purposes, use gameDayStart directly
+    // gameDayStart is stored in UTC (7 AM UTC = 5 AM UTC-2)
+    // Timezone conversion is handled by formatting functions using selectedTimezone
     const displayDayStart = useMemo(() => {
-        if (timeMode === 'game') {
-            // Game time mode: display in UTC-2 (subtract 2 hours from UTC)
-            return new Date(gameDayStart.getTime() - (2 * 60 * 60 * 1000));
-        } else {
-            // Local time mode: convert UTC to local timezone (browser handles conversion)
-            return new Date(gameDayStart);
-        }
-    }, [gameDayStart, timeMode]);
+        // Always use gameDayStart directly - formatting will handle timezone conversion
+        return new Date(gameDayStart);
+    }, [gameDayStart]);
     
     const displayDayEnd = useMemo(() => {
-        if (timeMode === 'game') {
-            // Game time mode: display in UTC-2 (subtract 2 hours from UTC)
-            return new Date(gameDayEnd.getTime() - (2 * 60 * 60 * 1000));
-        } else {
-            // Local time mode: convert UTC to local timezone
-            return new Date(gameDayEnd);
-        }
-    }, [gameDayEnd, timeMode]);
+        // Always use gameDayEnd directly - formatting will handle timezone conversion
+        return new Date(gameDayEnd);
+    }, [gameDayEnd]);
 
     const displayDate = timeMode === 'game' ? selectedGameDate : displayDayStart;
     
     // Get the calendar dates that a game day spans (might span two calendar days)
+    // Use the actual calendar date from selectedGameDate, not timezone-adjusted times
+    // The calendar date should be consistent regardless of timezone
     const gameDayCalendarDates = useMemo(() => {
-        // For game time mode, use UTC date components; for local time, use local date components
-        const startDate = timeMode === 'game' 
-            ? new Date(Date.UTC(displayDayStart.getUTCFullYear(), displayDayStart.getUTCMonth(), displayDayStart.getUTCDate()))
-            : new Date(displayDayStart.getFullYear(), displayDayStart.getMonth(), displayDayStart.getDate());
-        const endDate = timeMode === 'game'
-            ? new Date(Date.UTC(displayDayEnd.getUTCFullYear(), displayDayEnd.getUTCMonth(), displayDayEnd.getUTCDate()))
-            : new Date(displayDayEnd.getFullYear(), displayDayEnd.getMonth(), displayDayEnd.getDate());
+        // selectedGameDate is already a UTC date representing the calendar date
+        const startYear = selectedGameDate.getUTCFullYear();
+        const startMonth = selectedGameDate.getUTCMonth();
+        const startDay = selectedGameDate.getUTCDate();
+        const startDate = new Date(Date.UTC(startYear, startMonth, startDay));
         
-        // Check if it spans two different calendar days
-        if (startDate.getTime() !== endDate.getTime()) {
-            return { start: startDate, end: endDate, spansTwoDays: true };
+        // Check if the game day (7 AM UTC to 7 AM UTC next day) spans two calendar days
+        // This happens when 7 AM UTC in the selected timezone is on a different calendar date
+        // But for display purposes, we show the primary calendar date (the date at midnight UTC)
+        // The game day reset time only affects when events reset, not what calendar date is shown
+        const endDate = new Date(startDate);
+        endDate.setUTCDate(endDate.getUTCDate() + 1);
+        
+        // Check if game day spans two calendar days by checking if 7 AM UTC next day is on a different date
+        // in the selected timezone (but we'll still show the primary date)
+        // For simplicity, we'll check if the game day end (7 AM UTC next day) is on a different calendar date
+        // in UTC (which it always is, since it's the next day at 7 AM)
+        // But we only show the second date if the game day actually spans two calendar days in the display timezone
+        const tz = selectedTimezone || timezone;
+        const gameDayEndInTz = new Date(gameDayEnd);
+        const endDateStr = gameDayEndInTz.toLocaleDateString('en-US', { timeZone: tz });
+        const startDateStr = startDate.toLocaleDateString('en-US', { timeZone: tz });
+        
+        if (startDateStr !== endDateStr) {
+            // Game day spans two calendar days in the selected timezone
+            const endYear = gameDayEndInTz.getUTCFullYear();
+            const endMonth = gameDayEndInTz.getUTCMonth();
+            const endDay = gameDayEndInTz.getUTCDate();
+            const endCalendarDate = new Date(Date.UTC(endYear, endMonth, endDay));
+            return { start: startDate, end: endCalendarDate, spansTwoDays: true };
         }
         return { start: startDate, end: null, spansTwoDays: false };
-    }, [displayDayStart, displayDayEnd, timeMode]);
+    }, [selectedGameDate, gameDayEnd, selectedTimezone, timezone]);
     
     const isToday = useMemo(() => {
         const todayGameDate = getGameDate(new Date());
@@ -759,20 +749,17 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
     const currentTimePosition = useMemo(() => {
         if (!isToday || !now) return -1;
         
-        let minutesSinceDayStart: number;
-        if (timeMode === 'game') {            
-            minutesSinceDayStart = (now.getTime() - gameDayStart.getTime()) / (1000 * 60);
-        } else {
-            // For local time, use local time directly and compare with displayDayStart (which is in local time)
-            minutesSinceDayStart = (now.getTime() - displayDayStart.getTime()) / (1000 * 60);
-        }
+        // Always use gameDayStart (UTC) for positioning, regardless of timeMode
+        // The timeline is always based on the game day (7 AM UTC to 7 AM UTC next day)
+        // Only the hour labels and date badges change when switching time modes, not the event positions
+        const minutesSinceDayStart = (now.getTime() - gameDayStart.getTime()) / (1000 * 60);
         
         if (minutesSinceDayStart < 0 || minutesSinceDayStart > 24 * 60) {
             return -1;
         }
         
         return minutesToPixels(minutesSinceDayStart);
-    }, [isToday, now, timeMode, gameDayStart, displayDayStart]);
+    }, [isToday, now, gameDayStart]);
 
     
     useEffect(() => {
@@ -859,27 +846,25 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
             });
         
         return { boarletEvents: boarlets, otherEvents: others };
-    }, [selectedGameDate, isCategoryEnabled, isToday, isEventCompleted, completionsMounted]);
+    }, [selectedGameDate, isCategoryEnabled, isToday, isDailyEventCompleted, completionsMounted]);
 
     const changeDay = (amount: number) => {
         hasScrolledRef.current = false; // Allow scrolling on day change
         setSelectedGameDate(prev => {
+            // selectedGameDate is already normalized to midnight UTC representing a game date
+            // So we can just add/subtract days directly
             const newDate = new Date(prev);
-            // Add/subtract days and convert to game date
             newDate.setUTCDate(newDate.getUTCDate() + amount);
-            const gameDate = getGameDate(newDate);
             
             // Prevent going earlier than game day #1 (Oct 9, 2025)
             const launchDate = new Date(GAME_LAUNCH_DATE);
             launchDate.setUTCHours(0, 0, 0, 0);
-            const gameDateNormalized = new Date(gameDate);
-            gameDateNormalized.setUTCHours(0, 0, 0, 0);
             
-            if (gameDateNormalized.getTime() < launchDate.getTime()) {
+            if (newDate.getTime() < launchDate.getTime()) {
                 return prev; // Don't change if it would go before launch date
             }
             
-            return gameDate;
+            return newDate;
         });
     };
     
@@ -905,27 +890,24 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
     const dayBadges = useMemo(() => {
         const badges: Array<{ date: Date; startLeft: number; endLeft: number }> = [];
         
-        // displayDayStart is already converted to the correct timezone (UTC-2 for game time, local for local time)
-        const baseTime = new Date(displayDayStart);
+        // Use gameDayStart directly (7 AM UTC) to calculate dates in the selected timezone
+        const baseTime = new Date(gameDayStart);
+        const tz = selectedTimezone || timezone;
         
-        // Get the date of the first hour (hour 0)
-        const firstHourDate = timeMode === 'game'
-            ? new Date(Date.UTC(baseTime.getUTCFullYear(), baseTime.getUTCMonth(), baseTime.getUTCDate()))
-            : new Date(baseTime.getFullYear(), baseTime.getMonth(), baseTime.getDate());
+        // Get the calendar date that gameDayStart represents in the selected timezone
+        const startDateStr = baseTime.toLocaleDateString('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric' });
+        const [month, day, year] = startDateStr.split('/').map(Number);
+        // Create UTC date representing this calendar date at noon UTC (safe for formatting)
+        const firstHourDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
         
-        // Check if the day changes during the 24-hour period
-        let dayChangeHour = 24; // Default: no day change
-        for (let hour = 1; hour < 24; hour++) {
-            const hourTime = new Date(baseTime.getTime() + hour * 60 * 60 * 1000);
-            const hourDate = timeMode === 'game'
-                ? new Date(Date.UTC(hourTime.getUTCFullYear(), hourTime.getUTCMonth(), hourTime.getUTCDate()))
-                : new Date(hourTime.getFullYear(), hourTime.getMonth(), hourTime.getDate());
-            
-            if (hourDate.getTime() !== firstHourDate.getTime()) {
-                dayChangeHour = hour;
-                break;
-            }
-        }
+        // Calculate the hour of gameDayStart in the selected timezone
+        const startHourFormatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hour12: false });
+        const startHourParts = startHourFormatter.formatToParts(baseTime);
+        const startHour = parseInt(startHourParts.find(p => p.type === 'hour')?.value || '0');
+        
+        // Calculate hours until next midnight in the selected timezone
+        const hoursUntilMidnight = (24 - startHour) % 24;
+        const dayChangeHour = (hoursUntilMidnight > 0 && hoursUntilMidnight < 24) ? hoursUntilMidnight : 24;
         
         // First day badge - spans from hour 0 to where the day changes (or full 24 hours)
         badges.push({
@@ -936,10 +918,12 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
         
         // If the day changes during the 24-hour period, add a second badge
         if (dayChangeHour < 24) {
-            const lastHourTime = new Date(baseTime.getTime() + dayChangeHour * 60 * 60 * 1000);
-            const secondDayDate = timeMode === 'game'
-                ? new Date(Date.UTC(lastHourTime.getUTCFullYear(), lastHourTime.getUTCMonth(), lastHourTime.getUTCDate()))
-                : new Date(lastHourTime.getFullYear(), lastHourTime.getMonth(), lastHourTime.getDate());
+            const midnightTime = new Date(baseTime.getTime() + dayChangeHour * 60 * 60 * 1000);
+            // Get the calendar date at midnight in the selected timezone
+            const endDateStr = midnightTime.toLocaleDateString('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric' });
+            const [endMonth, endDay, endYear] = endDateStr.split('/').map(Number);
+            // Create UTC date representing this calendar date at noon UTC
+            const secondDayDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, 12, 0, 0, 0));
             
             // Second day badge - spans from day change to end
             badges.push({
@@ -950,26 +934,26 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
         }
         
         return badges;
-    }, [displayDayStart, timeMode]);
-
+    }, [gameDayStart, selectedTimezone, timezone]);
+    
     const timeMarkers = useMemo(() => {
         const markers = [];
         
-        // For game time mode, format as UTC to show UTC hours directly (after subtracting 2 hours)
-        // For local time mode, use browser's local timezone
+        // Always use selectedTimezone for formatting
+        const tz = selectedTimezone || undefined;
         const hourFormat: Intl.DateTimeFormatOptions = { 
             hour: 'numeric', 
             hour12: timeFormat === '12h',
-            timeZone: timeMode === 'game' ? 'UTC' : undefined
+            timeZone: tz
         };
         const minuteFormat: Intl.DateTimeFormatOptions = { 
             minute: '2-digit',
-            timeZone: timeMode === 'game' ? 'UTC' : undefined
+            timeZone: tz
         };
         const dateFormat: Intl.DateTimeFormatOptions = {
             month: 'short',
             day: 'numeric',
-            timeZone: timeMode === 'game' ? 'UTC' : undefined
+            timeZone: tz
         };
 
         // displayDayStart is already converted to the correct timezone (UTC-2 for game time, local for local time)
@@ -1018,7 +1002,7 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
             });
         }
         return markers;
-    }, [timeMode, timeFormat, displayDayStart]);
+    }, [timeMode, timeFormat, displayDayStart, selectedTimezone]);
 
     const legendItems = useMemo(() => {
         const items = new Map<string, { icon: React.ElementType, color: string }>();
@@ -1066,26 +1050,31 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                                 <h3 className="text-lg font-semibold text-center cursor-pointer hover:text-accent transition-colors">
                                     <div className="flex flex-col items-center">
                                         <div>
-                                            Game Day #{gameDayNumbers[0]}: {gameDayCalendarDates.start.toLocaleDateString('en-US', { 
-                                        weekday: 'long',
-                                        timeZone: timeMode === 'game' ? 'UTC' : undefined,
-                                        year: 'numeric', month: 'long', day: 'numeric' 
+                                            Game Day #{gameDayNumbers[0]}
+                                        </div>
+                                        <div className="text-sm text-muted-foreground font-normal text-center">
+                                            from {gameDayStart.toLocaleDateString('en-US', { 
+                            weekday: 'long',
+                                                timeZone: selectedTimezone || undefined,
+                            year: 'numeric', month: 'long', day: 'numeric' 
+                                            })} {gameDayStart.toLocaleTimeString('en-US', { 
+                                                timeZone: selectedTimezone || undefined,
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                hour12: timeFormat === '12h'
+                                            })} until {gameDayEnd.toLocaleDateString('en-US', { 
+                                                weekday: 'long',
+                                                timeZone: selectedTimezone || undefined,
+                                                year: 'numeric', month: 'long', day: 'numeric' 
+                                            })} {gameDayEnd.toLocaleTimeString('en-US', { 
+                                                timeZone: selectedTimezone || undefined,
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                hour12: timeFormat === '12h'
                                             })}
                                         </div>
-                                        { gameDayCalendarDates.spansTwoDays && gameDayCalendarDates.end && (
-                                            <div className="text-sm text-muted-foreground font-normal">
-                                                and {gameDayCalendarDates.end.toLocaleDateString('en-US', { 
-                                                    weekday: 'long',
-                                                    timeZone: timeMode === 'game' ? 'UTC' : undefined,
-                                                    year: 'numeric', month: 'long', day: 'numeric' 
-                                                })} 
-                                            </div>
-                                        )}
-                                        <div className="text-sm text-muted-foreground font-normal">
-                                            ({timeMode === 'game' ? 'Game Time' : 'Your Time'})
-                                        </div>
                                     </div>
-                                </h3>
+                    </h3>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="center">
                                 <Calendar
@@ -1121,7 +1110,7 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                 </div>
 
                 <div ref={timelineContainerRef} className="w-full overflow-x-auto pb-3 relative">
-                    <div className="flex sticky top-0 bg-card z-30 pt-8">
+                    <div className="flex sticky top-0 bg-card z-20 pt-8">
                         <div className="relative flex-1" style={{ minWidth: `${TOTAL_WIDTH}px` }}>
                             {/* Day badges - shown above the hours */}
                             <div className="absolute -top-7 left-0 right-0 h-5">
@@ -1130,7 +1119,7 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                                         weekday: 'short',
                                         month: 'short',
                                         day: 'numeric',
-                                        timeZone: timeMode === 'game' ? 'UTC' : undefined
+                                        timeZone: timeMode === 'game' ? 'UTC' : (selectedTimezone || undefined)
                                     });
                                     return (
                                         <div
@@ -1204,6 +1193,7 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                                             gameDayStart={gameDayStart}
                                             isCompleted={false}
                                             onToggleCompletion={() => {}}
+                                            selectedTimezone={selectedTimezone}
                                         />
                                     </div>
                                 );
@@ -1229,10 +1219,10 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                                                         // For buff events, check the specific occurrence
                                                         if (event.category === 'Buff') {
                                                             const occurrenceKey = `${occurrence.start.getUTCHours()}-${occurrence.start.getUTCMinutes()}`;
-                                                            return isEventCompleted(event.name, selectedGameDate, occurrenceKey);
+                                                            return isDailyEventCompleted(event.name, selectedGameDate, occurrenceKey);
                                                         } else {
-                                                            // For non-buff events, just check the event name (no occurrenceKey)
-                                                            return isEventCompleted(event.name, selectedGameDate);
+                                                            // For all non-buff events, check daily completions
+                                                            return isDailyEventCompleted(event.name, selectedGameDate);
                                                         }
                                                     })()}
                                                     onToggleCompletion={() => {
@@ -1241,8 +1231,11 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                                                         const occurrenceKey = event.category === 'Buff' 
                                                             ? `${occurrence.start.getUTCHours()}-${occurrence.start.getUTCMinutes()}`
                                                             : undefined;
-                                                        toggleEventCompletion(event.name, selectedGameDate, occurrenceKey);
+                                                        
+                                                        // Toggle daily completion
+                                                        toggleDailyEventCompletion(event.name, selectedGameDate, occurrenceKey);
                                                     }}
+                                                    selectedTimezone={selectedTimezone}
                                                 />
                                             ))}
                                         </Fragment>
@@ -1268,10 +1261,10 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                                                 // For buff events, check the specific occurrence
                                                 if (event.category === 'Buff') {
                                                     const occurrenceKey = `${occurrence.start.getUTCHours()}-${occurrence.start.getUTCMinutes()}`;
-                                                    return isEventCompleted(event.name, selectedGameDate, occurrenceKey);
+                                                    return isDailyEventCompleted(event.name, selectedGameDate, occurrenceKey);
                                                 } else {
-                                                    // For non-buff events, just check the event name (no occurrenceKey)
-                                                    return isEventCompleted(event.name, selectedGameDate);
+                                                    // For all non-buff events, check daily completions
+                                                    return isDailyEventCompleted(event.name, selectedGameDate);
                                                 }
                                             })()}
                                             onToggleCompletion={() => {
@@ -1280,7 +1273,9 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
                                                 const occurrenceKey = event.category === 'Buff' 
                                                     ? `${occurrence.start.getUTCHours()}-${occurrence.start.getUTCMinutes()}`
                                                     : undefined;
-                                                toggleEventCompletion(event.name, selectedGameDate, occurrenceKey);
+                                                
+                                                // Toggle daily completion
+                                                toggleDailyEventCompletion(event.name, selectedGameDate, occurrenceKey);
                                             }}
                                         />
                                     ))}
@@ -1290,7 +1285,7 @@ export default function DailyTimeline({ timeMode, timeFormat }: { timeMode: Time
 
                         {isToday && currentTimePosition >= 0 && (
                             <div 
-                                className="absolute top-0 h-full w-0.5 bg-accent z-50"
+                                className="absolute top-0 h-full w-0.5 bg-accent z-20"
                                 style={{ left: `${currentTimePosition}px` }}
                             >
                                 <div className="absolute -top-4 -translate-x-1/2 text-xs font-bold text-accent bg-background px-1 rounded">NOW</div>

@@ -6,7 +6,7 @@ import { useState, useMemo, useRef, useEffect, Fragment, memo, useCallback } fro
 import { createPortal } from 'react-dom';
 import { events, GameEvent } from '@/lib/events';
 import { useEventPreferences, filterEventsByPreferences } from './EventPreferences';
-import { getGameTime, toLocalTime, DAILY_RESET_HOUR_UTC, GAME_TIMEZONE_OFFSET } from '@/lib/time';
+import { getGameTime, toLocalTime, DAILY_RESET_HOUR_UTC, GAME_TIMEZONE_OFFSET, formatDuration, formatDurationWithDays } from '@/lib/time';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Star, Crown, Swords, Ghost, Gamepad2, Users, Footprints, Gift, UtensilsCrossed, HeartHandshake, ShieldCheck, KeySquare, CalendarHeart, BrainCircuit, ShieldAlert, RotateCcw, Target } from 'lucide-react';
@@ -121,7 +121,20 @@ const eventEndsAt5AM = (event: GameEvent): boolean => {
 };
 
 // Reusable tooltip content component for monthly timeline
-const MonthlyTooltipContent = memo(({ event, exactStartTime, exactEndTime, timeMode, timeFormat }: { event: GameEvent; exactStartTime: Date; exactEndTime: Date | null; timeMode: TimeDisplayMode; timeFormat: TimeFormat }) => {
+const MonthlyTooltipContent = memo(({ event, exactStartTime, exactEndTime, timeMode, timeFormat, selectedTimezone }: { event: GameEvent; exactStartTime: Date; exactEndTime: Date | null; timeMode: TimeDisplayMode; timeFormat: TimeFormat; selectedTimezone?: string }) => {
+    const [now, setNow] = useState<Date | null>(null);
+    const [timezone, setTimezone] = useState<string>(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    
+    useEffect(() => {
+        setNow(new Date());
+        const timerId = setInterval(() => {
+            setNow(new Date());
+            // Update timezone in case it changed
+            setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+        }, 1000);
+        return () => clearInterval(timerId);
+    }, []);
+    
     const dateFormat = 'MMM d, yyyy';
     const timeFormatStr = timeFormat === '12h' ? 'hh:mm a' : 'HH:mm';
     const isWhimsicalWinterfest = event.name === 'Whimsical Winterfest';
@@ -130,59 +143,71 @@ const MonthlyTooltipContent = memo(({ event, exactStartTime, exactEndTime, timeM
     const isValidStart = exactStartTime && !isNaN(exactStartTime.getTime());
     const isValidEnd = exactEndTime && !isNaN(exactEndTime.getTime());
     
-    // exactStartTime and exactEndTime are stored in UTC (after adding 2 hours from UTC-2)
-    // Convert to display time based on timeMode
-    let displayStartTime: Date | null = null;
-    let displayEndTime: Date | null = null;
+    // exactStartTime and exactEndTime are stored in UTC
+    // Always use selectedTimezone for formatting
+    // When game time is on, selectedTimezone is 'Etc/GMT+2' (UTC-2)
+    // When local time is on, selectedTimezone is the user's selected timezone
+    const tz = selectedTimezone || undefined;
     
-    if (isValidStart) {
-        if (timeMode === 'local') {
-            // exactStartTime is in UTC, browser will convert to local timezone automatically
-            displayStartTime = new Date(exactStartTime);
-        } else {
-            // For game time, subtract 2 hours from UTC to display UTC-2
-            // exactStartTime is in UTC (e.g., 7 AM UTC representing 5 AM UTC-2)
-            // Subtract 2 hours to get 5 AM UTC, then format as UTC to show 5 AM
-            displayStartTime = new Date(exactStartTime.getTime() - (2 * 60 * 60 * 1000));
-        }
-    }
-    
-    if (isValidEnd) {
-        if (timeMode === 'local') {
-            // exactEndTime is in UTC, browser will convert to local timezone automatically
-            displayEndTime = new Date(exactEndTime!);
-        } else {
-            // For game time, subtract 2 hours from UTC to display UTC-2
-            // exactEndTime is in UTC (e.g., 7 AM UTC representing 5 AM UTC-2)
-            // Subtract 2 hours to get 5 AM UTC, then format as UTC to show 5 AM
-            displayEndTime = new Date(exactEndTime!.getTime() - (2 * 60 * 60 * 1000));
-        }
-    }
-    
-    // Format dates and times
-    // For game time, displayStartTime/displayEndTime are already in UTC-2 (after subtracting 2 hours)
-    // Format them as UTC to show the UTC-2 hours directly
-    // For local time, browser handles the conversion
-    const startDateStr = displayStartTime 
-        ? (timeMode === 'game'
-            ? displayStartTime.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' })
-            : format(displayStartTime, dateFormat))
+    // Format dates and times directly using the UTC dates with the selected timezone
+    const startDateStr = exactStartTime && isValidStart
+        ? exactStartTime.toLocaleDateString('en-US', { timeZone: tz, year: 'numeric', month: 'short', day: 'numeric' })
         : 'Invalid date';
-    const startTimeStr = displayStartTime 
-        ? (timeMode === 'game' 
-            ? displayStartTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour12: timeFormat === '12h', hour: '2-digit', minute: '2-digit' })
-            : format(displayStartTime, timeFormatStr))
+    const startTimeStr = exactStartTime && isValidStart
+        ? exactStartTime.toLocaleTimeString('en-US', { timeZone: tz, hour12: timeFormat === '12h', hour: '2-digit', minute: '2-digit' })
         : '--:--';
-    const endDateStr = displayEndTime 
-        ? (timeMode === 'game'
-            ? displayEndTime.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' })
-            : format(displayEndTime, dateFormat))
+    const endDateStr = exactEndTime && isValidEnd
+        ? exactEndTime.toLocaleDateString('en-US', { timeZone: tz, year: 'numeric', month: 'short', day: 'numeric' })
         : null;
-    const endTimeStr = displayEndTime 
-        ? (timeMode === 'game'
-            ? displayEndTime.toLocaleTimeString('en-US', { timeZone: 'UTC', hour12: timeFormat === '12h', hour: '2-digit', minute: '2-digit' })
-            : format(displayEndTime, timeFormatStr))
+    const endTimeStr = exactEndTime && isValidEnd
+        ? exactEndTime.toLocaleTimeString('en-US', { timeZone: tz, hour12: timeFormat === '12h', hour: '2-digit', minute: '2-digit' })
         : null;
+    
+    // Helper function to format duration - use days format if longer than 24 hours
+    const formatDurationSmart = (ms: number): string => {
+        const HOURS_24_MS = 24 * 60 * 60 * 1000;
+        return ms >= HOURS_24_MS ? formatDurationWithDays(ms) : formatDuration(ms);
+    };
+    
+    // Calculate total event duration
+    let totalDuration: string | null = null;
+    if (exactEndTime && isValidEnd && isValidStart) {
+        const durationMs = exactEndTime.getTime() - exactStartTime.getTime();
+        totalDuration = formatDurationSmart(durationMs);
+    }
+    
+    // Calculate timer information
+    let timeInfo: string | null = null;
+    if (now && isValidStart) {
+        const nowTime = now.getTime();
+        const startTime = exactStartTime.getTime();
+        const timeUntilStart = startTime - nowTime;
+        
+        if (exactEndTime && isValidEnd) {
+            const endTime = exactEndTime.getTime();
+            const timeUntilEnd = endTime - nowTime;
+            
+            if (timeUntilStart > 0) {
+                // Event hasn't started yet
+                timeInfo = `Starts in ${formatDurationSmart(timeUntilStart)}`;
+            } else if (timeUntilEnd > 0) {
+                // Event is active
+                timeInfo = `Active! ${formatDurationSmart(timeUntilEnd)} left`;
+            } else {
+                // Event has ended
+                const timeAgo = nowTime - endTime;
+                timeInfo = `Ended ${formatDurationSmart(timeAgo)} ago`;
+            }
+        } else {
+            // No end time - just show when it started
+            if (timeUntilStart > 0) {
+                timeInfo = `Starts in ${formatDurationSmart(timeUntilStart)}`;
+            } else {
+                const timeAgo = nowTime - startTime;
+                timeInfo = `Started ${formatDurationSmart(timeAgo)} ago`;
+            }
+        }
+    }
     
     return (
         <div className="rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-lg max-w-xs">
@@ -193,7 +218,20 @@ const MonthlyTooltipContent = memo(({ event, exactStartTime, exactEndTime, timeM
                 ) : (
                     <p>Became available on {startDateStr} {startTimeStr}</p>
                 )}
+                {totalDuration && (
+                    <p className="mt-1">Total duration: {totalDuration}</p>
+                )}
             </div>
+            {timeInfo && (
+                <p className={cn(
+                    "text-sm font-medium mt-2",
+                    timeInfo.includes('Active!') ? "text-green-400" : 
+                    timeInfo.includes('ago') ? "text-muted-foreground" : 
+                    "text-accent"
+                )}>
+                    {timeInfo}
+                </p>
+            )}
             {isWhimsicalWinterfest && (
                 <div className="text-xs text-muted-foreground/80 mt-2 border-t pt-2 space-y-1">
                     <p className="font-semibold">Location Availability:</p>
@@ -217,6 +255,7 @@ const SeasonalCategoryIcons: Record<NonNullable<GameEvent['seasonalCategory']>, 
     'Halloween': Ghost,
     'Winter Fest': Gift,
     'Silverstar Carnival': CalendarHeart,
+    'Season 2 Warmup': Star,
 };
 
 const SeasonalCategoryColors: Record<NonNullable<GameEvent['seasonalCategory']>, {bg: string, border: string}> = {
@@ -224,6 +263,7 @@ const SeasonalCategoryColors: Record<NonNullable<GameEvent['seasonalCategory']>,
     'Halloween': { bg: 'bg-orange-500/80', border: 'border-orange-500' },
     'Winter Fest': { bg: 'bg-red-500/80', border: 'border-red-500' },
     'Silverstar Carnival': { bg: 'bg-blue-400/80', border: 'border-blue-400' },
+    'Season 2 Warmup': { bg: 'bg-purple-400/80', border: 'border-purple-400' },
 };
 
 const CategoryIcons: Record<GameEvent['category'], React.ElementType> = {
@@ -257,7 +297,7 @@ const CategoryColors: Record<GameEvent['category'], {bg: string, border: string,
 };
 
 
-const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, onToggleCompletion, currentTime, timeMode, timeFormat }: { event: GameEvent; range: { start: string; end?: string }; monthStart: Date; daysInMonth: number; isCompleted: boolean; onToggleCompletion: () => void; currentTime: Date; timeMode: TimeDisplayMode; timeFormat: TimeFormat }) => {
+const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, onToggleCompletion, currentTime, timeMode, timeFormat, selectedTimezone }: { event: GameEvent; range: { start: string; end?: string }; monthStart: Date; daysInMonth: number; isCompleted: boolean; onToggleCompletion: () => void; currentTime: Date; timeMode: TimeDisplayMode; timeFormat: TimeFormat; selectedTimezone?: string }) => {
 
     // Calculate exact start and end times based on event schedule (in UTC/game time)
     const exactStartTimeUTC = getEventStartTime(event, range.start);
@@ -271,26 +311,64 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, o
         return null;
     }
 
-    // Convert to display time (local or game time) based on timeMode
-    const exactStartTime = timeMode === 'local' ? toLocalTime(exactStartTimeUTC) : exactStartTimeUTC;
-    const exactEndTime = exactEndTimeUTC ? (timeMode === 'local' ? toLocalTime(exactEndTimeUTC) : exactEndTimeUTC) : null;
+    // Convert to display time using selectedTimezone
+    // For positioning, we always use UTC and apply timezone offset
+    // The exactStartTime/exactEndTime are kept as UTC for internal calculations
+    const exactStartTime = exactStartTimeUTC;
+    const exactEndTime = exactEndTimeUTC;
 
-    // Calculate month boundaries in the display timezone
-    let viewMonthStart: Date;
-    let viewMonthEnd: Date;
+    // Calculate timezone offset difference for positioning
+    // We need to shift events based on the difference between selectedTimezone and UTC
+    // Get the timezone offset in milliseconds
+    const getTimezoneOffset = (tz: string, date: Date): number => {
+        // Use a known UTC date and format it in both UTC and the target timezone
+        // The difference in hours/minutes gives us the offset
+        const utcFormatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'UTC',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        const tzFormatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        
+        const utcParts = utcFormatter.formatToParts(date);
+        const tzParts = tzFormatter.formatToParts(date);
+        
+        const utcHour = parseInt(utcParts.find(p => p.type === 'hour')?.value || '0');
+        const utcMinute = parseInt(utcParts.find(p => p.type === 'minute')?.value || '0');
+        const tzHour = parseInt(tzParts.find(p => p.type === 'hour')?.value || '0');
+        const tzMinute = parseInt(tzParts.find(p => p.type === 'minute')?.value || '0');
+        
+        // Calculate offset in milliseconds
+        const utcTotalMinutes = utcHour * 60 + utcMinute;
+        const tzTotalMinutes = tzHour * 60 + tzMinute;
+        const offsetMinutes = tzTotalMinutes - utcTotalMinutes;
+        
+        // Handle day rollover (e.g., UTC is 23:00, timezone is 01:00 next day = +2 hours)
+        // If the difference is more than 12 hours, it's likely a day rollover
+        let adjustedOffsetMinutes = offsetMinutes;
+        if (offsetMinutes > 12 * 60) {
+            adjustedOffsetMinutes = offsetMinutes - 24 * 60;
+        } else if (offsetMinutes < -12 * 60) {
+            adjustedOffsetMinutes = offsetMinutes + 24 * 60;
+        }
+        
+        return adjustedOffsetMinutes * 60 * 1000;
+    };
     
-    if (timeMode === 'local') {
-        // For local time, use local month boundaries (midnight local time)
-        const year = monthStart.getUTCFullYear();
-        const month = monthStart.getUTCMonth();
-        viewMonthStart = new Date(year, month, 1, 0, 0, 0);
-        const lastDay = new Date(year, month + 1, 0); // Last day of the month
-        viewMonthEnd = new Date(year, month, lastDay.getDate(), 23, 59, 59, 999);
-    } else {
-        // For game time, use UTC month boundaries
-        viewMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1, 0, 0, 0));
-        viewMonthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0, 23, 59, 59, 999));
-    }
+    const tz = selectedTimezone || (timeMode === 'game' ? 'Etc/GMT+2' : Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const timezoneOffsetMs = getTimezoneOffset(tz, exactStartTimeUTC);
+
+    // Calculate month boundaries for positioning
+    // We use UTC-based boundaries for internal calculations (positioning)
+    // but all formatting will use selectedTimezone
+    const viewMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1, 0, 0, 0, 0));
+    const viewMonthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
     // Clamp to month boundaries for display
     const displayStartTime = exactStartTime < viewMonthStart ? viewMonthStart : exactStartTime;
@@ -300,9 +378,10 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, o
     if (displayEndTime < viewMonthStart || displayStartTime > viewMonthEnd) return null;
 
     // Calculate position based on hour precision: position as fraction of month duration
+    // Shift the times by the timezone offset for positioning
     const monthStartTimestamp = viewMonthStart.getTime();
     const monthDurationMs = viewMonthEnd.getTime() - monthStartTimestamp;
-    const startOffsetMs = displayStartTime.getTime() - monthStartTimestamp;
+    const startOffsetMs = (displayStartTime.getTime() + timezoneOffsetMs) - monthStartTimestamp;
     const durationMs = displayEndTime.getTime() - displayStartTime.getTime();
 
     const leftPercent = (startOffsetMs / monthDurationMs) * 100;
@@ -425,10 +504,11 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, o
                     !startedInPreviousMonth && !continuesToNextMonth ? "rounded-lg" : "",
                     isActive && "ring-2 ring-white shadow-lg shadow-white/20"
                 )}
-                style={{
-                    left: `${leftPercent}%`,
-                    width: `max(calc(${widthPercent}% - 2px), 24px)`,
-                    ...(isCompleted && { filter: 'saturate(0.3)', opacity: 0.75 })
+                    style={{
+                        left: `${leftPercent}%`,
+                        width: `max(calc(${widthPercent}% - 2px), 24px)`,
+                    ...(isCompleted && { filter: 'saturate(0.3)', opacity: 0.75 }),
+                    pointerEvents: 'auto'
                 }}
                 onMouseEnter={(e) => {
                     setIsHovered(true);
@@ -442,25 +522,35 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, o
                 {startedInPreviousMonth && (
                     <ChevronLeft className="h-3 w-3 flex-shrink-0 opacity-60" />
                 )}
-                <Checkbox
-                    checked={isCompleted}
-                    onCheckedChange={(checked) => {
-                        if (checked !== 'indeterminate') {
-                            onToggleCompletion();
-                        }
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="h-3 w-3 flex-shrink-0 mr-1"
-                />
+                <div 
+                    className="relative flex-shrink-0 mr-1"
+                    style={{ zIndex: 50 }}
+                >
+                    <Checkbox
+                        checked={isCompleted}
+                        onCheckedChange={(checked) => {
+                            if (checked !== 'indeterminate') {
+                                onToggleCompletion();
+                            }
+                        }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                        }}
+                        onMouseDown={(e) => {
+                            e.stopPropagation();
+                        }}
+                        className="h-3 w-3"
+                    />
+                </div>
                 <Icon className="h-4 w-4 flex-shrink-0" style={isCompleted ? { filter: 'saturate(0.3)', opacity: 0.75 } : undefined} />
-                <span className="truncate">{event.name}</span>
+                    <span className="truncate">{event.name}</span>
                 {continuesToNextMonth && (
                     <ChevronRight className="h-3 w-3 flex-shrink-0 opacity-60 ml-auto" />
-                )}
-            </div>
+                    )}
+                </div>
             {mounted && isHovered && mousePos && typeof window !== 'undefined' && createPortal(
                 <div ref={tooltipRef} style={tooltipStyle}>
-                    <MonthlyTooltipContent event={event} exactStartTime={exactStartTimeUTC} exactEndTime={exactEndTimeUTC} timeMode={timeMode} timeFormat={timeFormat} />
+                    <MonthlyTooltipContent event={event} exactStartTime={exactStartTimeUTC} exactEndTime={exactEndTimeUTC} timeMode={timeMode} timeFormat={timeFormat} selectedTimezone={selectedTimezone} />
                 </div>,
                 document.body
             )}
@@ -468,10 +558,20 @@ const MonthlyEventBar = ({ event, range, monthStart, daysInMonth, isCompleted, o
     );
 };
 
-export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' }: { timeMode?: TimeDisplayMode; timeFormat?: TimeFormat }) {
+export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h', selectedTimezone }: { timeMode?: TimeDisplayMode; timeFormat?: TimeFormat; selectedTimezone?: string }) {
     const { isCategoryEnabled } = useEventPreferences();
     const { isEventCompleted: isMonthlyEventCompletedBase, toggleEventCompletion: toggleMonthlyEventCompletion, resetMonth, mounted: monthlyCompletionsMounted } = useMonthlyCompletions();
     const [now, setNow] = useState<Date | null>(null);
+    // Use selectedTimezone if provided, otherwise fall back to browser timezone
+    const timezone = selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
+    useEffect(() => {
+        setNow(new Date());
+        const timerId = setInterval(() => {
+            setNow(new Date());
+        }, 1000);
+        return () => clearInterval(timerId);
+    }, []);
     
     // Wrap isEventCompleted to respect timezone - only show as completed if event has ended in the selected timezone
     const isMonthlyEventCompleted = useCallback((eventName: string, range: { start: string; end?: string }, event?: GameEvent) => {
@@ -504,16 +604,66 @@ export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' 
     const timelineContainerRef = useRef<HTMLDivElement>(null);
     const hasScrolledRef = useRef(false);
 
+    // Ensure now is initialized
     useEffect(() => {
+        if (!now) {
         setNow(new Date());
-    }, []);
+        }
+    }, [now]);
 
     const gameNow = useMemo(() => now ? getGameTime(now) : new Date(), [now]);
-    // Calculate display time based on timeMode
+    
+    // Calculate timezone offset difference for positioning the "now" line
+    // We need to shift the "now" line based on the difference between selectedTimezone and UTC
+    const getTimezoneOffset = useCallback((tz: string, date: Date): number => {
+        // Use a known UTC date and format it in both UTC and the target timezone
+        // The difference in hours/minutes gives us the offset
+        const utcFormatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'UTC',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        const tzFormatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        
+        const utcParts = utcFormatter.formatToParts(date);
+        const tzParts = tzFormatter.formatToParts(date);
+        
+        const utcHour = parseInt(utcParts.find(p => p.type === 'hour')?.value || '0');
+        const utcMinute = parseInt(utcParts.find(p => p.type === 'minute')?.value || '0');
+        const tzHour = parseInt(tzParts.find(p => p.type === 'hour')?.value || '0');
+        const tzMinute = parseInt(tzParts.find(p => p.type === 'minute')?.value || '0');
+        
+        // Calculate offset in milliseconds
+        const utcTotalMinutes = utcHour * 60 + utcMinute;
+        const tzTotalMinutes = tzHour * 60 + tzMinute;
+        const offsetMinutes = tzTotalMinutes - utcTotalMinutes;
+        
+        // Handle day rollover (e.g., UTC is 23:00, timezone is 01:00 next day = +2 hours)
+        // If the difference is more than 12 hours, it's likely a day rollover
+        let adjustedOffsetMinutes = offsetMinutes;
+        if (offsetMinutes > 12 * 60) {
+            adjustedOffsetMinutes = offsetMinutes - 24 * 60;
+        } else if (offsetMinutes < -12 * 60) {
+            adjustedOffsetMinutes = offsetMinutes + 24 * 60;
+        }
+        
+        return adjustedOffsetMinutes * 60 * 1000;
+    }, []);
+    
+    // For positioning the "now" line, shift it based on timezone difference
     const displayNow = useMemo(() => {
         if (!now) return new Date();
-        return timeMode === 'local' ? now : gameNow;
-    }, [now, timeMode, gameNow]);
+        const tz = selectedTimezone || (timeMode === 'game' ? 'Etc/GMT+2' : Intl.DateTimeFormat().resolvedOptions().timeZone);
+        const timezoneOffsetMs = getTimezoneOffset(tz, now);
+        // Return a date shifted by the timezone offset for positioning
+        return new Date(now.getTime() + timezoneOffsetMs);
+    }, [now, selectedTimezone, timeMode, getTimezoneOffset]);
 
     const monthStart = useMemo(() => {
         const d = new Date(Date.UTC(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth(), 1));
@@ -522,34 +672,28 @@ export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' 
     
     const daysInMonth = useMemo(() => getDaysInMonth(monthStart.getUTCFullYear(), monthStart.getUTCMonth()), [monthStart]);
 
-    // Calculate isCurrentMonth and todayIndex using display timezone
+    // Calculate isCurrentMonth and todayIndex using selectedTimezone calendar dates
     const isCurrentMonth = useMemo(() => {
-        if (timeMode === 'local') {
-            const localNow = now || new Date();
-            return monthStart.getUTCFullYear() === localNow.getFullYear() &&
-                   monthStart.getUTCMonth() === localNow.getMonth();
-        } else {
-            return monthStart.getUTCFullYear() === gameNow.getUTCFullYear() &&
-                   monthStart.getUTCMonth() === gameNow.getUTCMonth();
-        }
-    }, [monthStart, timeMode, now, gameNow]);
+        if (!now) return false;
+        const tz = selectedTimezone || (timeMode === 'game' ? 'Etc/GMT+2' : Intl.DateTimeFormat().resolvedOptions().timeZone);
+        // Get current calendar date in the selected timezone
+        const currentYear = parseInt(now.toLocaleString('en-US', { timeZone: tz, year: 'numeric' }));
+        const currentMonth = parseInt(now.toLocaleString('en-US', { timeZone: tz, month: 'numeric' })) - 1; // Month is 0-indexed
+        
+        return monthStart.getUTCFullYear() === currentYear &&
+               monthStart.getUTCMonth() === currentMonth;
+    }, [monthStart, now, selectedTimezone, timeMode]);
     
     const todayIndex = useMemo(() => {
         if (!isCurrentMonth) return -1;
-        if (timeMode === 'local' && now) {
-            // Get the day of month in local time
-            const localDate = now.getDate();
-            // Month start is always in UTC, so we need to compare properly
-            const localMonth = now.getMonth();
-            const localYear = now.getFullYear();
-            if (monthStart.getUTCFullYear() === localYear && monthStart.getUTCMonth() === localMonth) {
-                return localDate - 1;
-            }
-            return -1;
-        } else {
-            return gameNow.getUTCDate() - 1;
-        }
-    }, [isCurrentMonth, timeMode, now, gameNow, monthStart]);
+        if (!now) return -1;
+        
+        const tz = selectedTimezone || (timeMode === 'game' ? 'Etc/GMT+2' : Intl.DateTimeFormat().resolvedOptions().timeZone);
+        // Get current calendar date in the selected timezone
+        const currentDay = parseInt(now.toLocaleString('en-US', { timeZone: tz, day: 'numeric' }));
+        // monthStart is the 1st, so today's index is currentDay - 1
+        return currentDay - 1;
+    }, [isCurrentMonth, now, selectedTimezone, timeMode]);
 
     const { dungeonUnlockEvents, raidUnlockEvents, roguelikeEvents, otherEvents } = useMemo(() => {
         const viewMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1, 5,0,0));
@@ -720,9 +864,9 @@ export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' 
                                 <span className="text-xs">Reset</span>
                             </Button>
                         )}
-                        <Button variant="outline" size="icon" onClick={() => changeMonth(1)}>
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
+                    <Button variant="outline" size="icon" onClick={() => changeMonth(1)}>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
                     </div>
                 </div>
 
@@ -773,6 +917,7 @@ export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' 
                                           currentTime={now!}
                                           timeMode={timeMode}
                                           timeFormat={timeFormat}
+                                          selectedTimezone={selectedTimezone}
                                       />
                                   ))}
                                </div>
@@ -791,6 +936,7 @@ export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' 
                                           currentTime={now!}
                                           timeMode={timeMode}
                                           timeFormat={timeFormat}
+                                          selectedTimezone={selectedTimezone}
                                       />
                                   ))}
                                </div>
@@ -809,6 +955,7 @@ export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' 
                                           currentTime={now!}
                                           timeMode={timeMode}
                                           timeFormat={timeFormat}
+                                          selectedTimezone={selectedTimezone}
                                       />
                                   ))}
                                </div>
@@ -823,7 +970,7 @@ export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' 
                                             event={event} 
                                             range={range}
                                             monthStart={monthStart} 
-                                            daysInMonth={daysInMonth}
+                                            daysInMonth={daysInMonth} 
                                             isCompleted={monthlyCompletionsMounted && isMonthlyEventCompleted(event.name, range, event)}
                                             onToggleCompletion={() => toggleMonthlyEventCompletion(event.name, range)}
                                             currentTime={now!}
@@ -838,7 +985,7 @@ export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' 
                                         event={event} 
                                         range={event.dateRange}
                                         monthStart={monthStart} 
-                                        daysInMonth={daysInMonth}
+                                        daysInMonth={daysInMonth} 
                                         isCompleted={monthlyCompletionsMounted && event.dateRange && isMonthlyEventCompleted(event.name, event.dateRange, event)}
                                         onToggleCompletion={() => event.dateRange && toggleMonthlyEventCompletion(event.name, event.dateRange)}
                                         currentTime={now!}
@@ -856,15 +1003,10 @@ export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' 
                             let viewMonthStart: Date;
                             let viewMonthEnd: Date;
                             
-                            if (timeMode === 'local') {
-                                const localMonthStart = new Date(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1, 0, 0, 0);
-                                viewMonthStart = new Date(localMonthStart.getTime());
-                                const lastDay = new Date(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0);
-                                viewMonthEnd = new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), 23, 59, 59);
-                            } else {
-                                viewMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1, 0, 0, 0));
-                                viewMonthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0, 23, 59, 59));
-                            }
+                            // Use UTC-based month boundaries for positioning calculations
+                            // All formatting will use selectedTimezone
+                            viewMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1, 0, 0, 0));
+                            viewMonthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0, 23, 59, 59));
                             
                             // Calculate position of current time within the month
                             const monthStartTimestamp = viewMonthStart.getTime();
@@ -874,20 +1016,19 @@ export default function MonthlyTimeline({ timeMode = 'game', timeFormat = '24h' 
                             
                             // Only show if current time is within this month
                             if (currentTimePercent >= 0 && currentTimePercent <= 100) {
-                                const timeFormatStr = timeFormat === '12h' ? 'hh:mm a' : 'HH:mm';
-                                const timeStr = timeMode === 'game'
-                                    ? displayNow.toLocaleTimeString('en-US', { timeZone: 'UTC', hour12: timeFormat === '12h', hour: '2-digit', minute: '2-digit' })
-                                    : format(displayNow, timeFormatStr);
+                                // Always use selectedTimezone for formatting
+                                const tz = selectedTimezone || timezone;
+                                const timeStr = displayNow.toLocaleTimeString('en-US', { timeZone: tz, hour12: timeFormat === '12h', hour: '2-digit', minute: '2-digit' });
                                 
                                 return (
                                     <div
-                                        className="absolute top-0 h-full w-0.5 bg-accent z-30 pointer-events-none"
+                                        className="absolute top-0 h-full w-0.5 bg-accent z-20 pointer-events-none"
                                         style={{ left: `${currentTimePercent}%` }}
                                     >
                                         <div className="absolute -top-5 -translate-x-1/2 text-xs font-bold text-accent bg-background px-1 rounded whitespace-nowrap">
                                             {timeStr}
                                         </div>
-                                    </div>
+                            </div>
                                 );
                             }
                             return null;

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Clock, Globe, Calendar, Search, Check } from 'lucide-react';
 import {
   Popover,
@@ -27,11 +27,12 @@ interface TimeDisplayProps {
     setTimeMode: (mode: TimeDisplayMode) => void;
     timeFormat: TimeFormat;
     setTimeFormat: (format: TimeFormat) => void;
+    selectedTimezone: string;
+    setSelectedTimezone: (tz: string) => void;
 }
 
-const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat }: TimeDisplayProps) => {
+const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat, selectedTimezone, setSelectedTimezone }: TimeDisplayProps) => {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
-  const [selectedTimezone, setSelectedTimezone] = useState<string>('');
   const [timezones, setTimezones] = useState<string[]>([]);
   const [isClient, setIsClient] = useState(false);
   const [timezoneSearch, setTimezoneSearch] = useState('');
@@ -46,7 +47,10 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat }: TimeD
 
   useEffect(() => {
     if (isClient) {
-        setSelectedTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+        // Only set default timezone if not already set
+        if (!selectedTimezone) {
+            setSelectedTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+        }
         try {
         if (typeof Intl.supportedValuesOf === 'function') {
             setTimezones(Intl.supportedValuesOf('timeZone'));
@@ -55,14 +59,50 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat }: TimeD
         console.error("Timezones not supported", e);
         }
     }
-  }, [isClient]);
+  }, [isClient, selectedTimezone, setSelectedTimezone]);
 
   const gameTime = currentTime ? getGameTime(currentTime) : null;
 
-  const formatTime = (date: Date | null, timeZone: string | undefined) => {
-    if (!date || !timeZone || !isClient) return '--:--:--';
+  // Check if game time and "your time" are on different dates
+  const dateInfo = useMemo(() => {
+    if (!currentTime || !isClient || !gameTime) return { gameDate: null, yourDate: null, areDifferent: false };
+    
+    // "Your time" timezone: system time when game mode, selectedTimezone when local mode
+    const yourTz = timeMode === 'game' ? Intl.DateTimeFormat().resolvedOptions().timeZone : (selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+    
+    // Get date strings for comparison
+    const gameDateStr = gameTime.toLocaleDateString('en-US', { timeZone: 'Etc/GMT+2' });
+    const yourDateStr = currentTime.toLocaleDateString('en-US', { timeZone: yourTz });
+    
+    // Get formatted dates for display
+    const gameDateFormatted = gameTime.toLocaleDateString(undefined, {
+      timeZone: 'Etc/GMT+2',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    const yourDateFormatted = currentTime.toLocaleDateString(undefined, {
+      timeZone: yourTz,
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    return {
+      gameDate: gameDateFormatted,
+      yourDate: yourDateFormatted,
+      areDifferent: gameDateStr !== yourDateStr
+    };
+  }, [currentTime, isClient, gameTime, timeMode, selectedTimezone]);
+
+  const formatTime = (date: Date | null, timeZone: string | undefined, useSystemTime: boolean = false) => {
+    if (!date || !isClient) return '--:--:--';
+    const tz = useSystemTime ? Intl.DateTimeFormat().resolvedOptions().timeZone : timeZone;
+    if (!tz) return '--:--:--';
     return date.toLocaleTimeString('en-US', {
-      timeZone,
+      timeZone: tz,
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -70,10 +110,12 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat }: TimeD
     });
   };
   
-  const formatDate = (date: Date | null, timeZone: string | undefined) => {
-    if (!date || !timeZone || !isClient) return 'Loading...';
+  const formatDate = (date: Date | null, timeZone: string | undefined, useSystemTime: boolean = false) => {
+    if (!date || !isClient) return 'Loading...';
+    const tz = useSystemTime ? Intl.DateTimeFormat().resolvedOptions().timeZone : timeZone;
+    if (!tz) return 'Loading...';
     return date.toLocaleDateString(undefined, {
-      timeZone,
+      timeZone: tz,
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -89,32 +131,127 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat }: TimeD
     setTimeFormat(checked ? '12h' : '24h');
   };
 
+  // Calculate time difference between selected timezone and game time (UTC-2)
+  const getTimeDifference = useMemo(() => {
+    if (!currentTime || !isClient) return null;
+    
+    // Get the timezone to compare (selected timezone if local mode, system timezone if game mode)
+    const compareTz = timeMode === 'local' && selectedTimezone ? selectedTimezone : Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
+    // Game time is UTC-2 (fixed offset)
+    const gameTimeOffsetHours = -2;
+    
+    // Calculate the UTC offset of the compare timezone
+    // Use the current UTC time and format it in the compare timezone
+    const utcNow = new Date(currentTime.getTime());
+    
+    // Create a formatter that includes timeZoneName to get the offset
+    // We'll calculate offset by comparing UTC time to local time in the timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: compareTz,
+      timeZoneName: 'longOffset'
+    });
+    
+    // Get the offset string (e.g., "GMT+14:00" or "GMT-09:00")
+    const parts = formatter.formatToParts(utcNow);
+    const offsetPart = parts.find(p => p.type === 'timeZoneName');
+    
+    if (offsetPart) {
+      // Parse the offset (e.g., "GMT+14:00" -> 14, "GMT-09:00" -> -9)
+      const offsetMatch = offsetPart.value.match(/GMT([+-])(\d{1,2}):?(\d{2})?/);
+      if (offsetMatch) {
+        const sign = offsetMatch[1] === '+' ? 1 : -1;
+        const hours = parseInt(offsetMatch[2] || '0');
+        const minutes = parseInt(offsetMatch[3] || '0');
+        const compareOffsetHours = sign * (hours + minutes / 60);
+        
+        // Calculate the difference
+        const diffHours = compareOffsetHours - gameTimeOffsetHours;
+        
+        if (Math.abs(diffHours) < 0.5) return null; // Less than 30 minutes difference
+        
+        return Math.round(diffHours);
+      }
+    }
+    
+    // Fallback: calculate offset by comparing formatted times
+    // Format the same UTC moment in both timezones with full date/time
+    const gameFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Etc/GMT+2',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const compareFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: compareTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    const gameStr = gameFormatter.format(utcNow);
+    const compareStr = compareFormatter.format(utcNow);
+    
+    // Parse the formatted strings (format: "MM/DD/YYYY, HH:mm")
+    const gameMatch = gameStr.match(/(\d{2})\/(\d{2})\/(\d{4}), (\d{2}):(\d{2})/);
+    const compareMatch = compareStr.match(/(\d{2})\/(\d{2})\/(\d{4}), (\d{2}):(\d{2})/);
+    
+    if (gameMatch && compareMatch) {
+      const gameDate = new Date(Date.UTC(
+        parseInt(gameMatch[3]),
+        parseInt(gameMatch[1]) - 1,
+        parseInt(gameMatch[2]),
+        parseInt(gameMatch[4]),
+        parseInt(gameMatch[5])
+      ));
+      const compareDate = new Date(Date.UTC(
+        parseInt(compareMatch[3]),
+        parseInt(compareMatch[1]) - 1,
+        parseInt(compareMatch[2]),
+        parseInt(compareMatch[4]),
+        parseInt(compareMatch[5])
+      ));
+      
+      // The difference in milliseconds represents the timezone offset difference
+      const diffMs = compareDate.getTime() - gameDate.getTime();
+      const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+      
+      if (Math.abs(diffHours) < 0.5) return null;
+      
+      return diffHours;
+    }
+    
+    return null;
+  }, [currentTime, isClient, timeMode, selectedTimezone]);
+
   return (
     <TooltipProvider>
       <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm md:text-base">
         <div className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg bg-secondary/50">
             <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-accent flex-shrink-0" />
               <div className="flex flex-col text-right min-w-[140px] sm:min-w-[180px]">
-                  <span className="font-semibold text-foreground">
-                      {formatDate(currentTime, selectedTimezone)}
-                  </span>
+                  {dateInfo.areDifferent ? (
+                      <>
+                          <span className="font-semibold text-foreground">
+                              Your Time: {dateInfo.yourDate}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                              Game Time: {dateInfo.gameDate}
+                          </span>
+                      </>
+                  ) : (
+                      <span className="font-semibold text-foreground">
+                          {formatDate(currentTime, selectedTimezone, timeMode === 'game')}
+                      </span>
+                  )}
               </div>
           </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg bg-secondary/50 cursor-help">
-              <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-accent flex-shrink-0" />
-              <div className="flex flex-col text-right min-w-[70px] sm:min-w-[85px]">
-                <span className="font-semibold text-foreground font-mono">
-                  {formatTime(currentTime, selectedTimezone)}
-                </span>
-              </div>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Your Time</p>
-          </TooltipContent>
-        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg bg-secondary/50 cursor-help">
@@ -128,6 +265,28 @@ const TimeDisplay = ({ timeMode, setTimeMode, timeFormat, setTimeFormat }: TimeD
           </TooltipTrigger>
           <TooltipContent>
             <p>Game Time (UTC-2)</p>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg bg-secondary/50 cursor-help">
+              <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-accent flex-shrink-0" />
+              <div className="flex flex-col text-right min-w-[70px] sm:min-w-[85px]">
+                <span className="font-semibold text-foreground font-mono">
+                  {formatTime(currentTime, selectedTimezone, timeMode === 'game')}
+                </span>
+              </div>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Your Time</p>
+            {getTimeDifference !== null && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {getTimeDifference > 0 
+                  ? `${getTimeDifference} hour${getTimeDifference !== 1 ? 's' : ''} ahead of game time`
+                  : `${Math.abs(getTimeDifference)} hour${Math.abs(getTimeDifference) !== 1 ? 's' : ''} behind game time`}
+              </p>
+            )}
           </TooltipContent>
         </Tooltip>
       <div className="flex items-center space-x-1 sm:space-x-2">

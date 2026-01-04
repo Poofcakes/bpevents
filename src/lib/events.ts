@@ -4,7 +4,7 @@ export interface GameEvent {
   name: string;
   type: 'World Boss' | 'Special Event' | 'Leisure Activity' | 'Unlock';
   category: 'Boss' | 'World Boss Crusade' | 'Buff' | 'Social' | 'Mini-game' | 'Patrol' | 'Guild' | 'Event' | 'Hunting' | 'Dungeon Unlock' | 'Raid Unlock' | 'Roguelike';
-  seasonalCategory?: 'Silverstar Carnival' | 'Halloween' | 'Kanamia Harvest Festival' | 'Winter Fest';
+  seasonalCategory?: 'Silverstar Carnival' | 'Halloween' | 'Kanamia Harvest Festival' | 'Winter Fest' | 'Season 2 Warmup';
   description: string;
   schedule: Schedule;
   durationMinutes?: number;
@@ -334,9 +334,9 @@ export const events: GameEvent[] = [
     schedule: { 
       type: 'daily-intervals',
       intervals: [
-        { start: { hour: 0, minute: 0 }, end: { hour: 5, minute: 0 } },
         { start: { hour: 12, minute: 0 }, end: { hour: 17, minute: 0 } },
         { start: { hour: 18, minute: 0 }, end: { hour: 23, minute: 0 } },
+        { start: { hour: 0, minute: 0 }, end: { hour: 5, minute: 0 } },
       ],
     },
     dateRange: {
@@ -418,7 +418,7 @@ export const events: GameEvent[] = [
     type: 'Special Event',
     category: 'Social',
     seasonalCategory: 'Winter Fest',
-    description: 'Celebrate the New Year with spectacular fireworks displays!',
+    description: 'Celebrate the New Year with spectacular fireworks displays! NOTE: This event does not give any rewards.',
     schedule: {
       type: 'daily-specific',
       days: [0, 1, 2, 3, 4, 5, 6], // All days (filtered by dateRanges)
@@ -525,11 +525,11 @@ export const events: GameEvent[] = [
       type: 'daily-intervals-specific',
       days: [1, 3, 5, 0], // Mon, Wed, Fri, Sun
       intervals: [
-        { start: { hour: 1, minute: 0 }, end: { hour: 2, minute: 0 } },
         { start: { hour: 13, minute: 0 }, end: { hour: 14, minute: 0 } },
         { start: { hour: 15, minute: 0 }, end: { hour: 16, minute: 0 } },
         { start: { hour: 18, minute: 0 }, end: { hour: 19, minute: 0 } },
         { start: { hour: 21, minute: 0 }, end: { hour: 22, minute: 0 } },
+        { start: { hour: 1, minute: 0 }, end: { hour: 2, minute: 0 } },
       ],
     },
   },
@@ -542,10 +542,10 @@ export const events: GameEvent[] = [
       type: 'daily-intervals-specific',
       days: [1, 3, 5, 0], // Mon, Wed, Fri, Sun
       intervals: [
-        { start: { hour: 2, minute: 0 }, end: { hour: 3, minute: 0 } },
         { start: { hour: 16, minute: 0 }, end: { hour: 17, minute: 0 } },
         { start: { hour: 19, minute: 0 }, end: { hour: 20, minute: 0 } },
         { start: { hour: 22, minute: 0 }, end: { hour: 23, minute: 0 } },
+        { start: { hour: 2, minute: 0 }, end: { hour: 3, minute: 0 } },
       ],
     },
     availability: {
@@ -580,11 +580,11 @@ export const events: GameEvent[] = [
       type: 'daily-intervals-specific',
       days: [2, 4, 6, 0], // Tue, Thu, Sat, Sun
       intervals: [
-        { start: { hour: 1, minute: 0 }, end: { hour: 2, minute: 0 } },
         { start: { hour: 13, minute: 0 }, end: { hour: 14, minute: 0 } },
         { start: { hour: 15, minute: 0 }, end: { hour: 16, minute: 0 } },
         { start: { hour: 18, minute: 0 }, end: { hour: 19, minute: 0 } },
         { start: { hour: 21, minute: 0 }, end: { hour: 22, minute: 0 } },
+        { start: { hour: 1, minute: 0 }, end: { hour: 2, minute: 0 } },
       ],
     },
     availability: {
@@ -600,10 +600,10 @@ export const events: GameEvent[] = [
       type: 'daily-intervals-specific',
       days: [2, 4, 6, 0], // Tue, Thu, Sat, Sun
       intervals: [
-        { start: { hour: 2, minute: 0 }, end: { hour: 3, minute: 0 } },
         { start: { hour: 16, minute: 0 }, end: { hour: 17, minute: 0 } },
         { start: { hour: 19, minute: 0 }, end: { hour: 20, minute: 0 } },
         { start: { hour: 22, minute: 0 }, end: { hour: 23, minute: 0 } },
+        { start: { hour: 2, minute: 0 }, end: { hour: 3, minute: 0 } },
       ],
     },
     availability: {
@@ -740,10 +740,22 @@ export const events: GameEvent[] = [
     name: 'Prelude of Crimson',
     type: 'Special Event',
     category: 'Event',
-    description: 'An unknown event. Details to be announced.',
+    seasonalCategory: 'Season 2 Warmup',
+    description: 'Season 2 Warmup: Follow the hidden clues, uncover the truth behind the crimson haze, and reunite with Airona. Step into the Land of Crimson Illusion, face the unknown, and emerge victorious with exclusive rewards.',
     schedule: { type: 'none' },
     dateRange: {
       start: '2026-01-01',
+      end: '2026-01-15'
+    }
+  },
+  {
+    name: 'Season 2 Start',
+    type: 'Special Event',
+    category: 'Event',
+    description: 'Season 2 officially begins.',
+    schedule: { type: 'none' },
+    dateRange: {
+      start: '2026-01-15',
       end: '2026-01-15'
     }
   },

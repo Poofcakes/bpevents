@@ -22,6 +22,7 @@ export type TimeFormat = '12h' | '24h';
 export default function Home() {
   const [timeMode, setTimeMode] = useState<TimeDisplayMode>('local');
   const [timeFormat, setTimeFormat] = useState<TimeFormat>('24h');
+  const [selectedTimezone, setSelectedTimezone] = useState<string>('');
   const [mounted, setMounted] = useState(false);
   const [isRebuilding, setIsRebuilding] = useState(false);
 
@@ -79,6 +80,7 @@ export default function Home() {
     setMounted(true);
     const savedTimeMode = localStorage.getItem('timeMode') as TimeDisplayMode | null;
     const savedTimeFormat = localStorage.getItem('timeFormat') as TimeFormat | null;
+    const savedTimezone = localStorage.getItem('selectedTimezone') as string | null;
     
     if (savedTimeMode === 'game' || savedTimeMode === 'local') {
       setTimeMode(savedTimeMode);
@@ -86,7 +88,35 @@ export default function Home() {
     if (savedTimeFormat === '12h' || savedTimeFormat === '24h') {
       setTimeFormat(savedTimeFormat);
     }
+    
+    // Initialize timezone based on timeMode
+    if (savedTimeMode === 'game') {
+      // Game time uses UTC-2 (Etc/GMT+2 - note: IANA uses inverted signs)
+      setSelectedTimezone('Etc/GMT+2');
+    } else if (savedTimezone) {
+      setSelectedTimezone(savedTimezone);
+    } else if (typeof window !== 'undefined') {
+      setSelectedTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    }
   }, []);
+
+  // Update selectedTimezone when timeMode changes
+  useEffect(() => {
+    if (!mounted) return;
+    
+    if (timeMode === 'game') {
+      // Game time uses UTC-2 (Etc/GMT+2 - note: IANA uses inverted signs)
+      setSelectedTimezone('Etc/GMT+2');
+    } else {
+      // When switching to local time, use saved timezone or system default
+      const savedTimezone = localStorage.getItem('selectedTimezone') as string | null;
+      if (savedTimezone && savedTimezone !== 'Etc/GMT+2') {
+        setSelectedTimezone(savedTimezone);
+      } else if (typeof window !== 'undefined') {
+        setSelectedTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+      }
+    }
+  }, [timeMode, mounted]);
 
   // Save timeMode to localStorage when it changes
   useEffect(() => {
@@ -101,6 +131,13 @@ export default function Home() {
       localStorage.setItem('timeFormat', timeFormat);
     }
   }, [timeFormat, mounted]);
+
+  // Save selectedTimezone to localStorage when it changes (but not when it's game time)
+  useEffect(() => {
+    if (mounted && selectedTimezone && timeMode === 'local') {
+      localStorage.setItem('selectedTimezone', selectedTimezone);
+    }
+  }, [selectedTimezone, timeMode, mounted]);
 
   // Show rebuilding page if detected (but only after mounted to prevent hydration issues)
   if (mounted && isRebuilding) {
@@ -120,6 +157,8 @@ export default function Home() {
           setTimeMode={setTimeMode} 
           timeFormat={timeFormat}
           setTimeFormat={setTimeFormat}
+          selectedTimezone={selectedTimezone}
+          setSelectedTimezone={setSelectedTimezone}
         />
         <main className="flex-grow container mx-auto px-4 py-8 space-y-8">
         <div>
@@ -134,21 +173,21 @@ export default function Home() {
             <Calendar className="h-7 w-7" />
             Today's Timeline
           </h2>
-          <DailyTimeline timeMode={timeMode} timeFormat={timeFormat} />
+          <DailyTimeline timeMode={timeMode} timeFormat={timeFormat} selectedTimezone={selectedTimezone} />
         </div>
         <div>
           <h2 className="text-3xl font-bold mb-6 font-headline gradient-text drop-shadow-lg flex items-center gap-2">
             <CalendarDays className="h-7 w-7" />
             This Week's Schedule
           </h2>
-          <WeeklyTimeline timeMode={timeMode} />
+          <WeeklyTimeline timeMode={timeMode} selectedTimezone={selectedTimezone} />
         </div>
         <div>
           <h2 className="text-3xl font-bold mb-6 font-headline gradient-text drop-shadow-lg flex items-center gap-2">
             <CalendarRange className="h-7 w-7" />
             Monthly Events
           </h2>
-          <MonthlyTimeline timeMode={timeMode} timeFormat={timeFormat} />
+          <MonthlyTimeline timeMode={timeMode} timeFormat={timeFormat} selectedTimezone={selectedTimezone} />
         </div>
         <div className="space-y-4">
            <h2 className="text-3xl font-bold font-headline gradient-text drop-shadow-lg flex items-center gap-2">
@@ -286,7 +325,7 @@ export default function Home() {
       </main>
       <footer className="text-center py-4 text-muted-foreground text-sm border-t space-y-2">
         <p>BP:SR Event Tracker | Blue Protocol: Star Resonance</p>
-        <p>Last Updated: 31.12.2025</p>
+        <p>Last Updated: 03.01.2026</p>
         <div className="flex items-center justify-center gap-4 pt-2">
           <a
             href="https://ko-fi.com/poofcakes"
